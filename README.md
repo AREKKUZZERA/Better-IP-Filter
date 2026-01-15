@@ -3,7 +3,7 @@
 ![Java Version](https://img.shields.io/badge/Java-21+-blue)
 ![PaperMC](https://img.shields.io/badge/Paper-1.21.x-white)
 ![Release](https://img.shields.io/github/v/release/AREKKUZZERA/better-IP-Filter&logo=github)
-[![Modrinth](https://img.shields.io/badge/Modrinth-Available-1bd96a?logo=modrinth&logoColor=white)](-)
+[![Modrinth](https://img.shields.io/badge/Modrinth-Available-1bd96a?logo=modrinth&logoColor=white)](https://modrinth.com/plugin/better-ip-filter)
 
 **Better-IP-Filter** is a lightweight and fast IP whitelist plugin for **Minecraft Paper servers**.  
 It performs early IP validation during the login process and blocks connections from non-whitelisted IP addresses with minimal performance impact.
