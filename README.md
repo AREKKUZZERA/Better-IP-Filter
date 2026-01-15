@@ -26,7 +26,7 @@ It performs early IP validation during the login process and blocks connections 
 ## 📦 Requirements
 
 - **Java:** 21 or newer  
-- **Server:** Paper 1.21 – 1.21.11  
+- **Server:** Paper 1.21 - 1.21.11  
 - **Build tool:** Maven (only if building from source)
 
 ---
@@ -65,8 +65,8 @@ messages:
 
 ### Key options
 
-* `enabled` — enables or disables IP filtering globally
-* `messages` — fully customizable plugin messages (supports color codes)
+* `enabled` - enables or disables IP filtering globally
+* `messages` - fully customizable plugin messages (supports color codes)
 
 ---
 
@@ -147,9 +147,8 @@ target/Better-IP-Filter-1.0.0.jar
 
 ## ✅ Compatibility
 
-* ✔ Paper only
+* ✔ Paper/Spigot/etc
 * ✔ Minecraft 1.21 – 1.21.11
-* ✖ Not compatible with Spigot or Fabric
 
 ---
 
