@@ -1,0 +1,29 @@
+name: Better-IP-Filter
+version: 1.0.0
+main: betteripfilter.BetterIpFilterPlugin
+api-version: '1.21'
+commands:
+  ipf:
+    description: Manage Better-IP-Filter settings
+    usage: /ipf <add|remove|list|on|off>
+permissions:
+  betteripfilter.admin:
+    description: Full access to Better-IP-Filter
+    default: op
+    children:
+      betteripfilter.add: true
+      betteripfilter.remove: true
+      betteripfilter.list: true
+      betteripfilter.toggle: true
+  betteripfilter.add:
+    description: Add IPs to the whitelist
+    default: op
+  betteripfilter.remove:
+    description: Remove IPs from the whitelist
+    default: op
+  betteripfilter.list:
+    description: List whitelisted IPs
+    default: op
+  betteripfilter.toggle:
+    description: Toggle filtering on or off
+    default: op

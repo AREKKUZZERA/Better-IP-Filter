@@ -1,0 +1,12 @@
+enabled: true
+messages:
+  prefix: "&7[&bBetter-IP-Filter&7] &r"
+  notAllowed: "&cYour IP address is not allowed on this server."
+  enabled: "&aIP filtering enabled."
+  disabled: "&eIP filtering disabled."
+  added: "&aAdded IP: &f{ip}"
+  removed: "&aRemoved IP: &f{ip}"
+  notFound: "&cIP not found: &f{ip}"
+  invalidIp: "&cInvalid IP address: &f{ip}"
+  listHeader: "&bWhitelisted IPs &7({count})&b:"
+  noPermission: "&cYou do not have permission to do that."
