@@ -38,6 +38,7 @@ public class BetterIpFilterPlugin extends JavaPlugin {
         saveConfig();
     }
 
+    @SuppressWarnings("deprecation")
     public String color(String message) {
         return ChatColor.translateAlternateColorCodes('&', message);
     }

@@ -16,6 +16,7 @@ public class IpFilterListener implements Listener {
         this.store = store;
     }
 
+    @SuppressWarnings("deprecation")
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onPreLogin(AsyncPlayerPreLoginEvent event) {
         if (!plugin.isFilteringEnabled()) {

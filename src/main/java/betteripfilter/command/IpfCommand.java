@@ -82,6 +82,7 @@ public class IpfCommand implements CommandExecutor {
         return true;
     }
 
+    @SuppressWarnings("deprecation")
     private boolean handleList(CommandSender sender) {
         if (!hasPermission(sender, "betteripfilter.list")) {
             return true;
