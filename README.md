@@ -1,3 +1,4 @@
+````md
 # Better-IP-Filter
 
 ![Paper](https://img.shields.io/badge/Paper-1.21.x-brightgreen)
@@ -61,7 +62,7 @@ messages:
   invalidIp: "&cInvalid IP: &f{ip}"
   listHeader: "&7Whitelisted IPs (&f{count}&7):"
   noPermission: "&cNo permission."
-
+````
 
 ### Key options
 
