@@ -10,3 +10,26 @@ messages:
   invalidIp: "&cInvalid IP address: &f{ip}"
   listHeader: "&bWhitelisted IPs &7({count})&b:"
   noPermission: "&cYou do not have permission to do that."
+proxy:
+  mode: "DIRECT" # DIRECT | BUNGEE | VELOCITY
+  trusted-forwarded-ips: []
+ratelimit:
+  enabled: true
+  window-seconds: 10
+  max-attempts: 5
+  message: "&cToo many connection attempts. Try again later."
+failsafe:
+  mode: "DENY_ALL" # DENY_ALL | ALLOW_ALL
+  message: "&cWhitelist unavailable. Try again later."
+logging:
+  denied: true
+  denied-to-file: true
+  file-name: "denied.log"
+webhook:
+  enabled: false
+  url: ""
+  on-denied: true
+  on-ratelimit: true
+  on-failsafe: true
+  timeout-ms: 3000
+  format: "JSON"
