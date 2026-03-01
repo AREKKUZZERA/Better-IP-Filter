@@ -1,0 +1,47 @@
+enabled: true
+messages:
+  prefix: "&7[&bBetter-IP-Filter&7] &r"
+  notAllowed: "&cYour IP address is not allowed on this server."
+  enabled: "&aIP filtering enabled."
+  disabled: "&eIP filtering disabled."
+  added: "&aAdded IP: &f{ip}"
+  alreadyExists: "&eIP already exists: &f{ip}"
+  removed: "&aRemoved IP: &f{ip}"
+  notFound: "&cIP not found: &f{ip}"
+  failedUpdate: "&cFailed to update whitelist."
+  storeUnavailable: "&cWhitelist storage unavailable."
+  invalidIp: "&cInvalid IP address: &f{ip}"
+  listHeader: "&bWhitelisted entries &7({count})&b:"
+  noPermission: "&cYou do not have permission to do that."
+  reloaded: "&aConfiguration reloaded."
+  statusHeader: "&bBetter-IP-Filter status:"
+  proxyNotTrusted: "&cConnection denied: proxy is not trusted."
+proxy:
+  mode: "DIRECT" # DIRECT | PROXY_GATE
+  trusted-forwarded-ips: []
+ratelimit:
+  enabled: true
+  window-seconds: 10
+  max-attempts: 5
+  message: "&cToo many connection attempts. Try again later."
+failsafe:
+  mode: "DENY_ALL" # DENY_ALL | ALLOW_ALL
+  message: "&cWhitelist unavailable. Try again later."
+logging:
+  denied: true
+  denied-to-file: true
+  file-name: "denied.log"
+  async-queue-size: 8192
+  async-batch-size: 64
+  async-flush-interval-ms: 1000
+  async-drop-log-interval-seconds: 10
+webhook:
+  enabled: false
+  url: ""
+  on-denied: true
+  on-ratelimit: true
+  on-failsafe: true
+  timeout-ms: 3000
+  max-per-second: 5
+  max-queue-size: 1000
+  format: "JSON"
