@@ -69,26 +69,16 @@ public class IpStore {
     }
 
     public boolean isAllowed(String ip) {
-        int ipInt = parseIpv4ToInt(ip);
-        if (ipInt < 0) {
-            return false;
-        }
+        int ipInt = Ipv4.parseToInt(ip);
+        return ipInt != Ipv4.INVALID && isAllowed(ipInt);
+    }
 
+    public boolean isAllowed(int ipInt) {
         Snapshot current = snapshot;
         if (current.exactIps.contains(ipInt)) {
             return true;
         }
-        for (IpRange range : current.ranges) {
-            if (range.contains(ipInt)) {
-                return true;
-            }
-        }
-        for (CidrBlock block : current.cidrBlocks) {
-            if (block.contains(ipInt)) {
-                return true;
-            }
-        }
-        return false;
+        return current.containsInRange(ipInt);
     }
 
     public boolean add(String entry) {
@@ -178,9 +168,8 @@ public class IpStore {
 
     private ParseResult parseEntries(Iterable<String> loaded) {
         Set<String> normalizedEntries = new HashSet<>();
-        Set<Integer> exactIps = new HashSet<>();
-        List<CidrBlock> cidrBlocks = new ArrayList<>();
-        List<IpRange> ranges = new ArrayList<>();
+        List<Range> ranges = new ArrayList<>();
+        int exactCount = 0;
 
         for (String entry : loaded) {
             if (entry == null || entry.isBlank()) {
@@ -192,15 +181,77 @@ public class IpStore {
             }
             normalizedEntries.add(parsed.normalized);
             if (parsed.type == EntryType.EXACT) {
-                exactIps.add(parsed.singleIp);
+                exactCount++;
             } else if (parsed.type == EntryType.CIDR) {
-                cidrBlocks.add(new CidrBlock(parsed.singleIp, parsed.prefix));
+                ranges.add(new Range(Ipv4.cidrStart(parsed.singleIp, parsed.prefix), Ipv4.cidrEnd(parsed.singleIp, parsed.prefix)));
             } else {
-                ranges.add(new IpRange(parsed.rangeStart, parsed.rangeEnd));
+                ranges.add(new Range(parsed.rangeStart, parsed.rangeEnd));
             }
         }
 
-        return ParseResult.success(normalizedEntries, new Snapshot(exactIps, cidrBlocks, ranges));
+        IntHashSet exactIps = rebuildExactSet(normalizedEntries, exactCount);
+        int[][] merged = mergeRanges(ranges);
+        return ParseResult.success(normalizedEntries, new Snapshot(exactIps, merged[0], merged[1]));
+    }
+
+    private IntHashSet rebuildExactSet(Set<String> normalizedEntries, int exactCount) {
+        IntHashSet exactIps = new IntHashSet(exactCount);
+        for (String entry : normalizedEntries) {
+            if (entry.indexOf('/') >= 0 || entry.indexOf('-') >= 0) {
+                continue;
+            }
+            int ip = Ipv4.parseToInt(entry);
+            if (ip != Ipv4.INVALID) {
+                exactIps.add(ip);
+            }
+        }
+        return exactIps;
+    }
+
+    private int[][] mergeRanges(List<Range> ranges) {
+        if (ranges.isEmpty()) {
+            return new int[][]{new int[0], new int[0]};
+        }
+        ranges.sort((a, b) -> {
+            int cmpStart = Integer.compareUnsigned(a.start, b.start);
+            if (cmpStart != 0) {
+                return cmpStart;
+            }
+            return Integer.compareUnsigned(a.end, b.end);
+        });
+
+        List<Range> merged = new ArrayList<>(ranges.size());
+        Range current = ranges.getFirst();
+        for (int i = 1; i < ranges.size(); i++) {
+            Range next = ranges.get(i);
+            if (canMerge(current, next)) {
+                if (Integer.compareUnsigned(next.end, current.end) > 0) {
+                    current = new Range(current.start, next.end);
+                }
+            } else {
+                merged.add(current);
+                current = next;
+            }
+        }
+        merged.add(current);
+
+        int[] starts = new int[merged.size()];
+        int[] ends = new int[merged.size()];
+        for (int i = 0; i < merged.size(); i++) {
+            starts[i] = merged.get(i).start;
+            ends[i] = merged.get(i).end;
+        }
+        return new int[][]{starts, ends};
+    }
+
+    private boolean canMerge(Range left, Range right) {
+        if (Integer.compareUnsigned(right.start, left.end) <= 0) {
+            return true;
+        }
+        if (left.end == -1) {
+            return true;
+        }
+        return Integer.compareUnsigned(right.start, left.end + 1) == 0;
     }
 
     private ParsedEntry parseEntry(String raw) {
@@ -221,8 +272,8 @@ public class IpStore {
             if (parts.length != 2) {
                 return null;
             }
-            int ip = parseIpv4ToInt(parts[0]);
-            if (ip < 0) {
+            int ip = Ipv4.parseToInt(parts[0]);
+            if (ip == Ipv4.INVALID) {
                 return null;
             }
             int prefix;
@@ -234,7 +285,7 @@ public class IpStore {
             if (prefix < 0 || prefix > 32) {
                 return null;
             }
-            String normalized = intToIp(ip) + "/" + prefix;
+            String normalized = Ipv4.toString(ip) + "/" + prefix;
             return ParsedEntry.cidr(normalized, ip, prefix);
         }
         if (dashIndex > -1) {
@@ -242,80 +293,31 @@ public class IpStore {
             if (parts.length != 2) {
                 return null;
             }
-            int start = parseIpv4ToInt(parts[0]);
-            int end = parseIpv4ToInt(parts[1]);
-            if (start < 0 || end < 0) {
+            int start = Ipv4.parseToInt(parts[0]);
+            int end = Ipv4.parseToInt(parts[1]);
+            if (start == Ipv4.INVALID || end == Ipv4.INVALID) {
                 return null;
             }
             if (Integer.compareUnsigned(start, end) > 0) {
                 return null;
             }
-            String normalized = intToIp(start) + "-" + intToIp(end);
+            String normalized = Ipv4.toString(start) + "-" + Ipv4.toString(end);
             return ParsedEntry.range(normalized, start, end);
         }
-        int ip = parseIpv4ToInt(trimmed);
-        if (ip < 0) {
+        int ip = Ipv4.parseToInt(trimmed);
+        if (ip == Ipv4.INVALID) {
             return null;
         }
-        return ParsedEntry.exact(intToIp(ip), ip);
-    }
-
-    private int parseIpv4ToInt(String value) {
-        if (value == null) {
-            return -1;
-        }
-        String trimmed = value.trim();
-        int length = trimmed.length();
-        if (length < 7 || length > 15) {
-            return -1;
-        }
-        int result = 0;
-        int part = 0;
-        int partLength = 0;
-        int parts = 0;
-        for (int i = 0; i < length; i++) {
-            char ch = trimmed.charAt(i);
-            if (ch == '.') {
-                if (partLength == 0) {
-                    return -1;
-                }
-                result = (result << 8) | part;
-                parts++;
-                part = 0;
-                partLength = 0;
-                continue;
-            }
-            if (ch < '0' || ch > '9') {
-                return -1;
-            }
-            part = part * 10 + (ch - '0');
-            partLength++;
-            if (part > 255) {
-                return -1;
-            }
-        }
-        if (partLength == 0) {
-            return -1;
-        }
-        result = (result << 8) | part;
-        parts++;
-        if (parts != 4) {
-            return -1;
-        }
-        return result;
-    }
-
-    private String intToIp(int value) {
-        return (value >>> 24 & 0xFF) + "." +
-                (value >>> 16 & 0xFF) + "." +
-                (value >>> 8 & 0xFF) + "." +
-                (value & 0xFF);
+        return ParsedEntry.exact(Ipv4.toString(ip), ip);
     }
 
     private enum EntryType {
         EXACT,
         CIDR,
         RANGE
+    }
+
+    private record Range(int start, int end) {
     }
 
     private static final class ParsedEntry {
@@ -371,46 +373,43 @@ public class IpStore {
     }
 
     private static final class Snapshot {
-        private final Set<Integer> exactIps;
-        private final List<CidrBlock> cidrBlocks;
-        private final List<IpRange> ranges;
+        private final IntHashSet exactIps;
+        private final int[] starts;
+        private final int[] ends;
 
-        private Snapshot(Set<Integer> exactIps, List<CidrBlock> cidrBlocks, List<IpRange> ranges) {
-            this.exactIps = Collections.unmodifiableSet(exactIps);
-            this.cidrBlocks = Collections.unmodifiableList(cidrBlocks);
-            this.ranges = Collections.unmodifiableList(ranges);
+        private Snapshot(IntHashSet exactIps, int[] starts, int[] ends) {
+            this.exactIps = exactIps;
+            this.starts = starts;
+            this.ends = ends;
+        }
+
+        private boolean containsInRange(int ip) {
+            int idx = floorUnsigned(starts, ip);
+            if (idx < 0) {
+                return false;
+            }
+            return Integer.compareUnsigned(ip, ends[idx]) <= 0;
+        }
+
+        private int floorUnsigned(int[] values, int key) {
+            int lo = 0;
+            int hi = values.length - 1;
+            int result = -1;
+            while (lo <= hi) {
+                int mid = (lo + hi) >>> 1;
+                int cmp = Integer.compareUnsigned(values[mid], key);
+                if (cmp <= 0) {
+                    result = mid;
+                    lo = mid + 1;
+                } else {
+                    hi = mid - 1;
+                }
+            }
+            return result;
         }
 
         private static Snapshot empty() {
-            return new Snapshot(Collections.emptySet(), Collections.emptyList(), Collections.emptyList());
-        }
-    }
-
-    private static final class CidrBlock {
-        private final int network;
-        private final int mask;
-
-        private CidrBlock(int ip, int prefix) {
-            this.mask = prefix == 0 ? 0 : -1 << (32 - prefix);
-            this.network = ip & mask;
-        }
-
-        private boolean contains(int ip) {
-            return (ip & mask) == network;
-        }
-    }
-
-    private static final class IpRange {
-        private final int start;
-        private final int end;
-
-        private IpRange(int start, int end) {
-            this.start = start;
-            this.end = end;
-        }
-
-        private boolean contains(int ip) {
-            return Integer.compareUnsigned(ip, start) >= 0 && Integer.compareUnsigned(ip, end) <= 0;
+            return new Snapshot(IntHashSet.empty(), new int[0], new int[0]);
         }
     }
 }

@@ -72,7 +72,7 @@ messages:
   proxyNotTrusted: "&cConnection denied: proxy is not trusted."
 
 proxy:
-  mode: "DIRECT" # DIRECT | BUNGEE | VELOCITY
+  mode: "DIRECT" # DIRECT | PROXY_GATE
   trusted-forwarded-ips: []
 
 ratelimit:
@@ -89,6 +89,10 @@ logging:
   denied: true
   denied-to-file: true
   file-name: "denied.log"
+  async-queue-size: 8192
+  async-batch-size: 64
+  async-flush-interval-ms: 1000
+  async-drop-log-interval-seconds: 10
 
 webhook:
   enabled: false
@@ -97,6 +101,8 @@ webhook:
   on-ratelimit: true
   on-failsafe: true
   timeout-ms: 3000
+  max-per-second: 5
+  max-queue-size: 1000
   format: "JSON"
 ```
 
@@ -104,7 +110,7 @@ webhook:
 
 * `enabled` - enables or disables IP filtering globally
 * `messages` - fully customizable plugin messages (supports color codes)
-* `proxy.mode` - switch between direct and proxy modes (DIRECT/BUNGEE/VELOCITY)
+* `proxy.mode` - connection semantics: DIRECT or PROXY_GATE
 * `proxy.trusted-forwarded-ips` - list of trusted proxy IPs used as a gate
 * `ratelimit` - connection attempt throttling
 * `failsafe` - what to do when storage/proxy checks fail
@@ -160,8 +166,10 @@ Entries are normalized when saved to `ips.yml`.
 * Whitelisted IPs are stored in memory (`HashSet`) for O(1) lookup
 * If the IP is not allowed, the connection is denied immediately
 * No permission bypass is used by design to keep checks fast and secure
-* Proxy mode does not parse forwarded headers. It relies on Paper/Proxy IP forwarding being configured, and
-  uses `proxy.trusted-forwarded-ips` as a gate for incoming proxy addresses.
+* In `DIRECT`, whitelist checks run against the connection IP seen by Paper.
+* In `PROXY_GATE`, the connection IP must be in `proxy.trusted-forwarded-ips` before whitelist/rate checks continue.
+* For Velocity modern forwarding, security must primarily rely on the forwarding secret configured in both Paper and Velocity.
+  The plugin's proxy gate is an additional connection-level IP gate and does not parse forwarded headers.
 * Rate limiting throttles rapid login attempts based on source IP
 * Failsafe mode controls what happens when storage or proxy trust is unavailable
 * Denied log entries include IP addresses (privacy note: treat logs as sensitive)

@@ -8,6 +8,7 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 
 import java.util.List;
+import java.util.Locale;
 
 public class IpfCommand implements CommandExecutor {
     private final BetterIpFilterPlugin plugin;
@@ -25,7 +26,7 @@ public class IpfCommand implements CommandExecutor {
             return true;
         }
 
-        String sub = args[0].toLowerCase();
+        String sub = args[0].toLowerCase(Locale.ROOT);
         switch (sub) {
             case "add":
                 return handleAdd(sender, args);
@@ -184,6 +185,12 @@ public class IpfCommand implements CommandExecutor {
     }
 
     private void sendUsage(CommandSender sender) {
-        sender.sendMessage(plugin.prefixed("&cUsage: /ipf <add|remove|list|status|reload|on|off>"));
+        sender.sendMessage(plugin.prefixed("&cUsage: /ipf <subcommand>"));
+        sender.sendMessage(plugin.prefixed("&7/ipf add <ip> &f- add IPv4/CIDR/range"));
+        sender.sendMessage(plugin.prefixed("&7/ipf remove <ip> &f- remove entry"));
+        sender.sendMessage(plugin.prefixed("&7/ipf list &f- list whitelist entries"));
+        sender.sendMessage(plugin.prefixed("&7/ipf status &f- plugin diagnostics"));
+        sender.sendMessage(plugin.prefixed("&7/ipf reload &f- reload config + whitelist"));
+        sender.sendMessage(plugin.prefixed("&7/ipf on|off &f- toggle filtering"));
     }
 }

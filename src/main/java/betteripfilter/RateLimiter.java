@@ -5,7 +5,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class RateLimiter {
     private static final int CLEANUP_CHECK_INTERVAL = 64;
-    private final ConcurrentHashMap<String, AttemptBucket> buckets = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Integer, AttemptBucket> buckets = new ConcurrentHashMap<>();
     private final int cleanupThreshold;
     private final AtomicInteger cleanupCounter = new AtomicInteger();
 
@@ -14,6 +14,14 @@ public class RateLimiter {
     }
 
     public boolean tryAcquire(String key, long windowMillis, int maxAttempts) {
+        int parsed = Ipv4.parseToInt(key);
+        if (parsed == Ipv4.INVALID) {
+            return false;
+        }
+        return tryAcquire(parsed, windowMillis, maxAttempts);
+    }
+
+    public boolean tryAcquire(int key, long windowMillis, int maxAttempts) {
         long now = System.currentTimeMillis();
         AttemptBucket bucket = buckets.compute(key, (ignored, existing) -> {
             if (existing == null) {
