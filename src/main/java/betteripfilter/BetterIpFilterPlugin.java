@@ -4,7 +4,6 @@ import betteripfilter.command.IpfCommand;
 import betteripfilter.command.IpfTabCompleter;
 import betteripfilter.listener.IpFilterListener;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
