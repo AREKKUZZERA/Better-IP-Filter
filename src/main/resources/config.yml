@@ -1,40 +1,55 @@
+# Better-IP-Filter configuration
+# Supports single IPv4 (1.2.3.4), CIDR notation (1.2.3.0/24), and ranges (1.2.3.0-1.2.3.255)
+
+# Master switch — set to false to allow all connections without filtering
 enabled: true
+
 messages:
-  prefix: "&7[&bBetter-IP-Filter&7] &r"
-  notAllowed: "&cYour IP address is not allowed on this server."
-  enabled: "&aIP filtering enabled."
-  disabled: "&eIP filtering disabled."
-  added: "&aAdded IP: &f{ip}"
-  alreadyExists: "&eIP already exists: &f{ip}"
-  removed: "&aRemoved IP: &f{ip}"
-  notFound: "&cIP not found: &f{ip}"
-  failedUpdate: "&cFailed to update whitelist."
+  prefix:           "&7[&bBetter-IP-Filter&7] &r"
+  notAllowed:       "&cYour IP address is not allowed on this server."
+  enabled:          "&aIP filtering enabled."
+  disabled:         "&eIP filtering disabled."
+  added:            "&aAdded: &f{ip}"
+  alreadyExists:    "&eAlready whitelisted: &f{ip}"
+  removed:          "&aRemoved: &f{ip}"
+  notFound:         "&cNot found: &f{ip}"
+  failedUpdate:     "&cFailed to update whitelist."
   storeUnavailable: "&cWhitelist storage unavailable."
-  invalidIp: "&cInvalid IP address: &f{ip}"
-  listHeader: "&bWhitelisted entries &7({count})&b:"
-  noPermission: "&cYou do not have permission to do that."
-  reloaded: "&aConfiguration reloaded."
-  statusHeader: "&bBetter-IP-Filter status:"
-  proxyNotTrusted: "&cConnection denied: proxy is not trusted."
+  invalidIp:        "&cInvalid IP or format: &f{ip}"
+  listHeader:       "&bWhitelisted entries &7({count})&b:"
+  noPermission:     "&cYou do not have permission to do that."
+  reloaded:         "&aConfiguration reloaded."
+  statusHeader:     "&bBetter-IP-Filter status:"
+  proxyNotTrusted:  "&cConnection denied: proxy not trusted."
+
 proxy:
-  mode: "DIRECT" # DIRECT | PROXY_GATE
+  # DIRECT   — use the real connecting IP (default, works without a proxy)
+  # PROXY_GATE — only allow connections from IPs listed in trusted-forwarded-ips
+  mode: "DIRECT"
   trusted-forwarded-ips: []
+
 ratelimit:
   enabled: true
-  window-seconds: 10
-  max-attempts: 5
+  window-seconds: 10   # time window for counting attempts
+  max-attempts: 5      # max attempts per window before rate-limiting
   message: "&cToo many connection attempts. Try again later."
+
 failsafe:
-  mode: "DENY_ALL" # DENY_ALL | ALLOW_ALL
+  # What to do when the whitelist store is unavailable or IP cannot be parsed
+  # DENY_ALL  — reject all connections (safer)
+  # ALLOW_ALL — let everyone in (risky, use only for high-availability setups)
+  mode: "DENY_ALL"
   message: "&cWhitelist unavailable. Try again later."
+
 logging:
-  denied: true
-  denied-to-file: true
-  file-name: "denied.log"
+  denied: true              # log denied connections to server console
+  denied-to-file: true      # also write denied connections to a file
+  file-name: "denied.log"   # relative to the plugin data folder
   async-queue-size: 8192
   async-batch-size: 64
   async-flush-interval-ms: 1000
   async-drop-log-interval-seconds: 10
+
 webhook:
   enabled: false
   url: ""
@@ -44,4 +59,3 @@ webhook:
   timeout-ms: 3000
   max-per-second: 5
   max-queue-size: 1000
-  format: "JSON"

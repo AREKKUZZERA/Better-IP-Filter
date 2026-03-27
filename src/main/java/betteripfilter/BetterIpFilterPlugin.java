@@ -3,7 +3,9 @@ package betteripfilter;
 import betteripfilter.command.IpfCommand;
 import betteripfilter.command.IpfTabCompleter;
 import betteripfilter.listener.IpFilterListener;
-import org.bukkit.ChatColor;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -22,6 +24,7 @@ public class BetterIpFilterPlugin extends JavaPlugin {
     private WebhookNotifier webhookNotifier;
     private AsyncDeniedLogWriter deniedLogWriter;
 
+    // Settings (loaded from config)
     private boolean rateLimitEnabled;
     private long rateLimitWindowMillis;
     private int rateLimitMaxAttempts;
@@ -69,7 +72,7 @@ public class BetterIpFilterPlugin extends JavaPlugin {
             command.setExecutor(executor);
             command.setTabCompleter(new IpfTabCompleter(ipStore));
         } else {
-            getLogger().severe("Command 'ipf' not found in plugin.yml");
+            getLogger().severe("Command 'ipf' not found in plugin.yml — check plugin.yml");
         }
     }
 
@@ -86,64 +89,69 @@ public class BetterIpFilterPlugin extends JavaPlugin {
     }
 
     public void loadSettings() {
-        rateLimitEnabled = getConfig().getBoolean("ratelimit.enabled", true);
-        int windowSeconds = Math.max(1, getConfig().getInt("ratelimit.window-seconds", 10));
-        rateLimitWindowMillis = windowSeconds * 1000L;
-        rateLimitMaxAttempts = Math.max(1, getConfig().getInt("ratelimit.max-attempts", 5));
-        rateLimitMessage = getConfig().getString("ratelimit.message",
+        rateLimitEnabled    = getConfig().getBoolean("ratelimit.enabled", true);
+        int windowSec       = Math.max(1, getConfig().getInt("ratelimit.window-seconds", 10));
+        rateLimitWindowMillis = windowSec * 1000L;
+        rateLimitMaxAttempts  = Math.max(1, getConfig().getInt("ratelimit.max-attempts", 5));
+        rateLimitMessage      = getConfig().getString("ratelimit.message",
                 "&cToo many connection attempts. Try again later.");
 
         String failsafeMode = getConfig().getString("failsafe.mode", "DENY_ALL").toUpperCase(Locale.ROOT);
-        failsafeDenyAll = "DENY_ALL".equals(failsafeMode);
-        failsafeMessage = getConfig().getString("failsafe.message", "&cWhitelist unavailable. Try again later.");
+        failsafeDenyAll  = "DENY_ALL".equals(failsafeMode);
+        failsafeMessage  = getConfig().getString("failsafe.message", "&cWhitelist unavailable. Try again later.");
 
-        logDenied = getConfig().getBoolean("logging.denied", true);
-        logDeniedToFile = getConfig().getBoolean("logging.denied-to-file", true);
-        deniedLogFileName = getConfig().getString("logging.file-name", "denied.log");
-        deniedLogQueueSize = Math.max(100, getConfig().getInt("logging.async-queue-size", 8192));
-        deniedLogBatchSize = Math.max(1, getConfig().getInt("logging.async-batch-size", 64));
-        deniedLogFlushIntervalMs = Math.max(100, getConfig().getLong("logging.async-flush-interval-ms", 1000));
-        deniedLogDropNoticeSeconds = Math.max(1, getConfig().getInt("logging.async-drop-log-interval-seconds", 10));
+        logDenied              = getConfig().getBoolean("logging.denied", true);
+        logDeniedToFile        = getConfig().getBoolean("logging.denied-to-file", true);
+        deniedLogFileName      = getConfig().getString("logging.file-name", "denied.log");
+        deniedLogQueueSize     = Math.max(100, getConfig().getInt("logging.async-queue-size", 8192));
+        deniedLogBatchSize     = Math.max(1,   getConfig().getInt("logging.async-batch-size", 64));
+        deniedLogFlushIntervalMs  = Math.max(100, getConfig().getLong("logging.async-flush-interval-ms", 1000));
+        deniedLogDropNoticeSeconds = Math.max(1,  getConfig().getInt("logging.async-drop-log-interval-seconds", 10));
 
-        webhookEnabled = getConfig().getBoolean("webhook.enabled", false);
-        webhookUrl = getConfig().getString("webhook.url", "");
-        webhookOnDenied = getConfig().getBoolean("webhook.on-denied", true);
+        webhookEnabled     = getConfig().getBoolean("webhook.enabled", false);
+        webhookUrl         = getConfig().getString("webhook.url", "");
+        webhookOnDenied    = getConfig().getBoolean("webhook.on-denied", true);
         webhookOnRateLimit = getConfig().getBoolean("webhook.on-ratelimit", true);
-        webhookOnFailsafe = getConfig().getBoolean("webhook.on-failsafe", true);
-        webhookTimeoutMs = Math.max(500, getConfig().getInt("webhook.timeout-ms", 3000));
+        webhookOnFailsafe  = getConfig().getBoolean("webhook.on-failsafe", true);
+        webhookTimeoutMs   = Math.max(500, getConfig().getInt("webhook.timeout-ms", 3000));
         webhookMaxPerSecond = Math.max(1, getConfig().getInt("webhook.max-per-second", 5));
-        webhookQueueSize = Math.max(10, getConfig().getInt("webhook.max-queue-size", 1000));
+        webhookQueueSize   = Math.max(10, getConfig().getInt("webhook.max-queue-size", 1000));
 
         proxyMode = getConfig().getString("proxy.mode", "DIRECT").toUpperCase(Locale.ROOT);
         trustedForwardedIps = new HashSet<>();
         for (String entry : getConfig().getStringList("proxy.trusted-forwarded-ips")) {
-            int ipInt = Ipv4.parseToInt(entry);
-            if (ipInt != Ipv4.INVALID) {
-                trustedForwardedIps.add(ipInt);
+            int ip = Ipv4.parseToInt(entry);
+            if (ip != Ipv4.INVALID) {
+                trustedForwardedIps.add(ip);
+            } else {
+                getLogger().warning("Skipping invalid trusted-forwarded-ip: '" + entry + "'");
             }
         }
 
         rateLimiter = new RateLimiter(RATE_LIMIT_CLEANUP_THRESHOLD);
+
         if (deniedLogWriter != null) {
             deniedLogWriter.shutdown(1000);
         }
-        if (logDeniedToFile) {
-            deniedLogWriter = new AsyncDeniedLogWriter(
-                    getLogger(),
-                    Path.of(getDataFolder().getPath(), deniedLogFileName),
-                    deniedLogQueueSize,
-                    deniedLogBatchSize,
-                    deniedLogFlushIntervalMs,
-                    Duration.ofSeconds(deniedLogDropNoticeSeconds)
-            );
-        } else {
-            deniedLogWriter = null;
-        }
+        deniedLogWriter = logDeniedToFile
+                ? new AsyncDeniedLogWriter(
+                        getLogger(),
+                        Path.of(getDataFolder().getPath(), deniedLogFileName),
+                        deniedLogQueueSize,
+                        deniedLogBatchSize,
+                        deniedLogFlushIntervalMs,
+                        Duration.ofSeconds(deniedLogDropNoticeSeconds))
+                : null;
+
         if (webhookNotifier != null) {
             webhookNotifier.shutdown(1000);
         }
         webhookNotifier = new WebhookNotifier(getLogger(), webhookQueueSize, webhookMaxPerSecond, 10_000);
     }
+
+    // -------------------------------------------------------------------------
+    // Filtering state
+    // -------------------------------------------------------------------------
 
     public boolean isFilteringEnabled() {
         return getConfig().getBoolean("enabled", true);
@@ -153,6 +161,10 @@ public class BetterIpFilterPlugin extends JavaPlugin {
         getConfig().set("enabled", enabled);
         saveConfig();
     }
+
+    // -------------------------------------------------------------------------
+    // Proxy
+    // -------------------------------------------------------------------------
 
     public boolean isProxyGateEnabled() {
         return "PROXY_GATE".equals(proxyMode);
@@ -174,45 +186,34 @@ public class BetterIpFilterPlugin extends JavaPlugin {
         return trustedForwardedIps.size();
     }
 
-    public boolean isRateLimitEnabled() {
-        return rateLimitEnabled;
-    }
+    // -------------------------------------------------------------------------
+    // Rate limit
+    // -------------------------------------------------------------------------
 
-    public long getRateLimitWindowMillis() {
-        return rateLimitWindowMillis;
-    }
+    public boolean isRateLimitEnabled()       { return rateLimitEnabled; }
+    public long    getRateLimitWindowMillis()  { return rateLimitWindowMillis; }
+    public int     getRateLimitMaxAttempts()   { return rateLimitMaxAttempts; }
+    public String  getRateLimitMessage()       { return rateLimitMessage; }
+    public RateLimiter getRateLimiter()        { return rateLimiter; }
 
-    public int getRateLimitMaxAttempts() {
-        return rateLimitMaxAttempts;
-    }
+    // -------------------------------------------------------------------------
+    // Failsafe
+    // -------------------------------------------------------------------------
 
-    public String getFailsafeMode() {
-        return failsafeDenyAll ? "DENY_ALL" : "ALLOW_ALL";
-    }
+    public boolean isFailsafeDenyAll()  { return failsafeDenyAll; }
+    public String  getFailsafeMode()    { return failsafeDenyAll ? "DENY_ALL" : "ALLOW_ALL"; }
+    public String  getFailsafeMessage() { return failsafeMessage; }
 
-    public String getRateLimitMessage() {
-        return rateLimitMessage;
-    }
+    // -------------------------------------------------------------------------
+    // Webhook
+    // -------------------------------------------------------------------------
 
-    public boolean isFailsafeDenyAll() {
-        return failsafeDenyAll;
-    }
+    public boolean isWebhookEnabled()    { return webhookEnabled; }
+    public boolean isWebhookConfigured() { return webhookEnabled && webhookUrl != null && !webhookUrl.isBlank(); }
 
-    public String getFailsafeMessage() {
-        return failsafeMessage;
-    }
-
-    public RateLimiter getRateLimiter() {
-        return rateLimiter;
-    }
-
-    public boolean isWebhookEnabled() {
-        return webhookEnabled;
-    }
-
-    public boolean isWebhookConfigured() {
-        return webhookEnabled && webhookUrl != null && !webhookUrl.isBlank();
-    }
+    // -------------------------------------------------------------------------
+    // Deny handling
+    // -------------------------------------------------------------------------
 
     public void handleDenied(DenyReason reason, String name, String ip) {
         if (logDenied) {
@@ -231,33 +232,48 @@ public class BetterIpFilterPlugin extends JavaPlugin {
     }
 
     private boolean shouldSendWebhook(DenyReason reason) {
-        if (!webhookEnabled || webhookUrl == null || webhookUrl.isBlank()) {
-            return false;
-        }
+        if (!webhookEnabled || webhookUrl == null || webhookUrl.isBlank()) return false;
         return switch (reason) {
-            case NOT_WHITELISTED -> webhookOnDenied;
-            case RATE_LIMIT -> webhookOnRateLimit;
-            case FAILSAFE -> webhookOnFailsafe;
-            case PROXY_NOT_TRUSTED -> webhookOnDenied;
+            case NOT_WHITELISTED, PROXY_NOT_TRUSTED -> webhookOnDenied;
+            case RATE_LIMIT  -> webhookOnRateLimit;
+            case FAILSAFE    -> webhookOnFailsafe;
         };
     }
 
     private String formatDeniedLine(DenyReason reason, String name, String ip) {
-        String safeName = name == null || name.isBlank() ? "-" : name;
-        String safeIp = ip == null || ip.isBlank() ? "-" : ip;
-        return Instant.now().toString() + " " + reason.name() + " " + safeName + " " + safeIp;
+        return Instant.now() + " " + reason.name()
+                + " " + (name == null || name.isBlank() ? "-" : name)
+                + " " + (ip   == null || ip.isBlank()   ? "-" : ip);
     }
 
-    @SuppressWarnings("deprecation")
-    public String color(String message) {
-        return ChatColor.translateAlternateColorCodes('&', message);
+    // -------------------------------------------------------------------------
+    // Text / component helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Translates legacy '&' color codes to a Component.
+     * Paper 1.21.4 uses Adventure — no deprecated ChatColor needed.
+     */
+    public Component colorComponent(String message) {
+        return LegacyComponentSerializer.legacyAmpersand().deserialize(message);
+    }
+
+    /**
+     * Returns a colored Component with the configured prefix prepended.
+     */
+    public Component prefixedComponent(String message) {
+        return colorComponent(msg("prefix") + message);
     }
 
     public String msg(String key) {
         return getConfig().getString("messages." + key, "");
     }
 
-    public String prefixed(String message) {
-        return color(msg("prefix") + message);
+    /**
+     * Kept for places that still need a plain string (e.g. disconnect reasons).
+     * Uses legacy serializer to preserve '&' codes in kick messages.
+     */
+    public String colorString(String message) {
+        return LegacyComponentSerializer.legacyAmpersand().serialize(colorComponent(message));
     }
 }

@@ -1,11 +1,15 @@
 name: Better-IP-Filter
-version: 1.0.0
+version: 1.1.0
 main: betteripfilter.BetterIpFilterPlugin
-api-version: "1.21"
+api-version: "1.21.4"
+description: Whitelist players by IPv4 address, CIDR range, or IP range.
+
 commands:
   ipf:
-    description: Manage Better-IP-Filter settings
+    description: Manage Better-IP-Filter whitelist and settings
     usage: /ipf <add|remove|list|status|reload|on|off>
+    permission: betteripfilter.admin
+
 permissions:
   betteripfilter.admin:
     description: Full access to Better-IP-Filter
@@ -27,10 +31,10 @@ permissions:
     description: List whitelisted IPs
     default: op
   betteripfilter.status:
-    description: View Better-IP-Filter status
+    description: View plugin status
     default: op
   betteripfilter.reload:
-    description: Reload Better-IP-Filter configuration
+    description: Reload configuration
     default: op
   betteripfilter.toggle:
     description: Toggle filtering on or off
