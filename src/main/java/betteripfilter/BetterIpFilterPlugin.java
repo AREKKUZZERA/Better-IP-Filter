@@ -23,7 +23,7 @@ public class BetterIpFilterPlugin extends JavaPlugin {
     private WebhookNotifier webhookNotifier;
     private AsyncDeniedLogWriter deniedLogWriter;
 
-    // Settings (loaded from config)
+    // Settings loaded from config
     private boolean rateLimitEnabled;
     private long rateLimitWindowMillis;
     private int rateLimitMaxAttempts;
@@ -67,8 +67,7 @@ public class BetterIpFilterPlugin extends JavaPlugin {
 
         PluginCommand command = getCommand("ipf");
         if (command != null) {
-            IpfCommand executor = new IpfCommand(this, ipStore);
-            command.setExecutor(executor);
+            command.setExecutor(new IpfCommand(this, ipStore));
             command.setTabCompleter(new IpfTabCompleter(ipStore));
         } else {
             getLogger().severe("Command 'ipf' not found in plugin.yml — check plugin.yml");
@@ -88,24 +87,24 @@ public class BetterIpFilterPlugin extends JavaPlugin {
     }
 
     public void loadSettings() {
-        rateLimitEnabled    = getConfig().getBoolean("ratelimit.enabled", true);
-        int windowSec       = Math.max(1, getConfig().getInt("ratelimit.window-seconds", 10));
+        rateLimitEnabled     = getConfig().getBoolean("ratelimit.enabled", true);
+        int windowSec        = Math.max(1, getConfig().getInt("ratelimit.window-seconds", 10));
         rateLimitWindowMillis = windowSec * 1000L;
-        rateLimitMaxAttempts  = Math.max(1, getConfig().getInt("ratelimit.max-attempts", 5));
-        rateLimitMessage      = getConfig().getString("ratelimit.message",
+        rateLimitMaxAttempts = Math.max(1, getConfig().getInt("ratelimit.max-attempts", 5));
+        rateLimitMessage     = getConfig().getString("ratelimit.message",
                 "&cToo many connection attempts. Try again later.");
 
         String failsafeMode = getConfig().getString("failsafe.mode", "DENY_ALL").toUpperCase(Locale.ROOT);
-        failsafeDenyAll  = "DENY_ALL".equals(failsafeMode);
-        failsafeMessage  = getConfig().getString("failsafe.message", "&cWhitelist unavailable. Try again later.");
+        failsafeDenyAll = "DENY_ALL".equals(failsafeMode);
+        failsafeMessage = getConfig().getString("failsafe.message", "&cWhitelist unavailable. Try again later.");
 
-        logDenied              = getConfig().getBoolean("logging.denied", true);
-        logDeniedToFile        = getConfig().getBoolean("logging.denied-to-file", true);
-        deniedLogFileName      = getConfig().getString("logging.file-name", "denied.log");
-        deniedLogQueueSize     = Math.max(100, getConfig().getInt("logging.async-queue-size", 8192));
-        deniedLogBatchSize     = Math.max(1,   getConfig().getInt("logging.async-batch-size", 64));
-        deniedLogFlushIntervalMs  = Math.max(100, getConfig().getLong("logging.async-flush-interval-ms", 1000));
-        deniedLogDropNoticeSeconds = Math.max(1,  getConfig().getInt("logging.async-drop-log-interval-seconds", 10));
+        logDenied                = getConfig().getBoolean("logging.denied", true);
+        logDeniedToFile          = getConfig().getBoolean("logging.denied-to-file", true);
+        deniedLogFileName        = getConfig().getString("logging.file-name", "denied.log");
+        deniedLogQueueSize       = Math.max(100, getConfig().getInt("logging.async-queue-size", 8192));
+        deniedLogBatchSize       = Math.max(1,   getConfig().getInt("logging.async-batch-size", 64));
+        deniedLogFlushIntervalMs = Math.max(100, getConfig().getLong("logging.async-flush-interval-ms", 1000));
+        deniedLogDropNoticeSeconds = Math.max(1, getConfig().getInt("logging.async-drop-log-interval-seconds", 10));
 
         webhookEnabled     = getConfig().getBoolean("webhook.enabled", false);
         webhookUrl         = getConfig().getString("webhook.url", "");
@@ -113,8 +112,8 @@ public class BetterIpFilterPlugin extends JavaPlugin {
         webhookOnRateLimit = getConfig().getBoolean("webhook.on-ratelimit", true);
         webhookOnFailsafe  = getConfig().getBoolean("webhook.on-failsafe", true);
         webhookTimeoutMs   = Math.max(500, getConfig().getInt("webhook.timeout-ms", 3000));
-        webhookMaxPerSecond = Math.max(1, getConfig().getInt("webhook.max-per-second", 5));
-        webhookQueueSize   = Math.max(10, getConfig().getInt("webhook.max-queue-size", 1000));
+        webhookMaxPerSecond = Math.max(1,  getConfig().getInt("webhook.max-per-second", 5));
+        webhookQueueSize   = Math.max(10,  getConfig().getInt("webhook.max-queue-size", 1000));
 
         proxyMode = getConfig().getString("proxy.mode", "DIRECT").toUpperCase(Locale.ROOT);
         trustedForwardedIps = new HashSet<>();
@@ -129,9 +128,7 @@ public class BetterIpFilterPlugin extends JavaPlugin {
 
         rateLimiter = new RateLimiter(RATE_LIMIT_CLEANUP_THRESHOLD);
 
-        if (deniedLogWriter != null) {
-            deniedLogWriter.shutdown(1000);
-        }
+        if (deniedLogWriter != null) deniedLogWriter.shutdown(1000);
         deniedLogWriter = logDeniedToFile
                 ? new AsyncDeniedLogWriter(
                         getLogger(),
@@ -142,9 +139,7 @@ public class BetterIpFilterPlugin extends JavaPlugin {
                         Duration.ofSeconds(deniedLogDropNoticeSeconds))
                 : null;
 
-        if (webhookNotifier != null) {
-            webhookNotifier.shutdown(1000);
-        }
+        if (webhookNotifier != null) webhookNotifier.shutdown(1000);
         webhookNotifier = new WebhookNotifier(getLogger(), webhookQueueSize, webhookMaxPerSecond, 10_000);
     }
 
@@ -165,35 +160,20 @@ public class BetterIpFilterPlugin extends JavaPlugin {
     // Proxy
     // -------------------------------------------------------------------------
 
-    public boolean isProxyGateEnabled() {
-        return "PROXY_GATE".equals(proxyMode);
-    }
-
-    public boolean hasTrustedForwardedIps() {
-        return !trustedForwardedIps.isEmpty();
-    }
-
-    public boolean isTrustedProxy(int ipInt) {
-        return trustedForwardedIps.contains(ipInt);
-    }
-
-    public String getProxyMode() {
-        return proxyMode;
-    }
-
-    public int getTrustedForwardedIpsCount() {
-        return trustedForwardedIps.size();
-    }
+    public boolean isProxyGateEnabled() { return "PROXY_GATE".equals(proxyMode); }
+    public boolean isTrustedProxy(int ipInt) { return trustedForwardedIps.contains(ipInt); }
+    public String  getProxyMode() { return proxyMode; }
+    public int     getTrustedForwardedIpsCount() { return trustedForwardedIps.size(); }
 
     // -------------------------------------------------------------------------
     // Rate limit
     // -------------------------------------------------------------------------
 
-    public boolean isRateLimitEnabled()       { return rateLimitEnabled; }
-    public long    getRateLimitWindowMillis()  { return rateLimitWindowMillis; }
-    public int     getRateLimitMaxAttempts()   { return rateLimitMaxAttempts; }
-    public String  getRateLimitMessage()       { return rateLimitMessage; }
-    public RateLimiter getRateLimiter()        { return rateLimiter; }
+    public boolean    isRateLimitEnabled()      { return rateLimitEnabled; }
+    public long       getRateLimitWindowMillis() { return rateLimitWindowMillis; }
+    public int        getRateLimitMaxAttempts()  { return rateLimitMaxAttempts; }
+    public String     getRateLimitMessage()      { return rateLimitMessage; }
+    public RateLimiter getRateLimiter()          { return rateLimiter; }
 
     // -------------------------------------------------------------------------
     // Failsafe
@@ -215,14 +195,16 @@ public class BetterIpFilterPlugin extends JavaPlugin {
     // -------------------------------------------------------------------------
 
     public void handleDenied(DenyReason reason, String name, String ip) {
+        String line = null; // built lazily — avoid formatting when neither sink needs it
+
         if (logDenied) {
-            String line = formatDeniedLine(reason, name, ip);
+            line = formatDeniedLine(reason, name, ip);
             getLogger().info(line);
-            if (logDeniedToFile && deniedLogWriter != null) {
-                deniedLogWriter.enqueue(line);
-            }
-        } else if (logDeniedToFile && deniedLogWriter != null) {
-            deniedLogWriter.enqueue(formatDeniedLine(reason, name, ip));
+        }
+
+        if (logDeniedToFile && deniedLogWriter != null) {
+            if (line == null) line = formatDeniedLine(reason, name, ip);
+            deniedLogWriter.enqueue(line);
         }
 
         if (shouldSendWebhook(reason)) {
@@ -234,32 +216,27 @@ public class BetterIpFilterPlugin extends JavaPlugin {
         if (!webhookEnabled || webhookUrl == null || webhookUrl.isBlank()) return false;
         return switch (reason) {
             case NOT_WHITELISTED, PROXY_NOT_TRUSTED -> webhookOnDenied;
-            case RATE_LIMIT  -> webhookOnRateLimit;
-            case FAILSAFE    -> webhookOnFailsafe;
+            case RATE_LIMIT -> webhookOnRateLimit;
+            case FAILSAFE   -> webhookOnFailsafe;
         };
     }
 
     private String formatDeniedLine(DenyReason reason, String name, String ip) {
-        return Instant.now() + " " + reason.name()
-                + " " + (name == null || name.isBlank() ? "-" : name)
-                + " " + (ip   == null || ip.isBlank()   ? "-" : ip);
+        String safeName = (name == null || name.isBlank()) ? "-" : name;
+        String safeIp   = (ip   == null || ip.isBlank())   ? "-" : ip;
+        return Instant.now() + " " + reason.name() + " " + safeName + " " + safeIp;
     }
 
     // -------------------------------------------------------------------------
     // Text / component helpers
     // -------------------------------------------------------------------------
 
-    /**
-     * Translates legacy '&' color codes to a Component.
-     * Paper 1.21.4 uses Adventure — no deprecated ChatColor needed.
-     */
+    /** Translates legacy '&amp;' color codes to a Component. */
     public Component colorComponent(String message) {
         return LegacyComponentSerializer.legacyAmpersand().deserialize(message);
     }
 
-    /**
-     * Returns a colored Component with the configured prefix prepended.
-     */
+    /** Returns a colored Component with the configured prefix prepended. */
     public Component prefixedComponent(String message) {
         return colorComponent(msg("prefix") + message);
     }
@@ -268,10 +245,7 @@ public class BetterIpFilterPlugin extends JavaPlugin {
         return getConfig().getString("messages." + key, "");
     }
 
-    /**
-     * Kept for places that still need a plain string (e.g. disconnect reasons).
-     * Uses legacy serializer to preserve '&' codes in kick messages.
-     */
+    /** Kept for places that still need a plain string (e.g. disconnect reasons). */
     public String colorString(String message) {
         return LegacyComponentSerializer.legacyAmpersand().serialize(colorComponent(message));
     }

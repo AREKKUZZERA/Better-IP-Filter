@@ -23,55 +23,58 @@ public class IpFilterListener implements Listener {
     public void onPreLogin(AsyncPlayerPreLoginEvent event) {
         if (!plugin.isFilteringEnabled()) return;
 
-        // Derive IP from InetAddress — avoids any port-stripping issues
         int ipInt = Ipv4.fromInetAddress(event.getAddress());
-        String name = event.getName();
-        String ipStr = ipInt != Ipv4.INVALID ? Ipv4.toString(ipInt) : event.getAddress().getHostAddress();
+        String name  = event.getName();
+        String ipStr = ipInt != Ipv4.INVALID
+                ? Ipv4.toString(ipInt)
+                : event.getAddress().getHostAddress();
 
-        // Cannot parse IP — treat as failsafe condition
+        // Cannot parse IP — treat as failsafe condition.
         if (ipInt == Ipv4.INVALID) {
-            if (plugin.isFailsafeDenyAll()) {
-                deny(event, plugin.prefixedComponent(plugin.getFailsafeMessage()));
-                plugin.handleDenied(DenyReason.FAILSAFE, name, ipStr);
-            }
+            handleFailsafe(event, name, ipStr);
             return;
         }
 
-        // Proxy gate: only allow connections from trusted proxy IPs
-        if (plugin.isProxyGateEnabled() && plugin.hasTrustedForwardedIps()
-                && !plugin.isTrustedProxy(ipInt)) {
-            if (plugin.isFailsafeDenyAll()) {
-                deny(event, plugin.prefixedComponent(plugin.msg("proxyNotTrusted")));
-                plugin.handleDenied(DenyReason.PROXY_NOT_TRUSTED, name, ipStr);
-            }
+        // Proxy gate: only allow connections from trusted proxy IPs.
+        if (plugin.isProxyGateEnabled() && !plugin.isTrustedProxy(ipInt)) {
+            deny(event, plugin.prefixedComponent(plugin.msg("proxyNotTrusted")));
+            plugin.handleDenied(DenyReason.PROXY_NOT_TRUSTED, name, ipStr);
             return;
         }
 
-        // Rate limiting
-        if (plugin.isRateLimitEnabled()) {
-            if (!plugin.getRateLimiter().tryAcquire(ipInt,
-                    plugin.getRateLimitWindowMillis(), plugin.getRateLimitMaxAttempts())) {
-                deny(event, plugin.prefixedComponent(plugin.getRateLimitMessage()));
-                plugin.handleDenied(DenyReason.RATE_LIMIT, name, ipStr);
-                return;
-            }
+        // Rate limiting.
+        if (plugin.isRateLimitEnabled()
+                && !plugin.getRateLimiter().tryAcquire(
+                        ipInt, plugin.getRateLimitWindowMillis(), plugin.getRateLimitMaxAttempts())) {
+            deny(event, plugin.prefixedComponent(plugin.getRateLimitMessage()));
+            plugin.handleDenied(DenyReason.RATE_LIMIT, name, ipStr);
+            return;
         }
 
-        // Whitelist store unavailable
+        // Whitelist store unavailable — apply failsafe policy.
         if (!store.isAvailable()) {
-            if (plugin.isFailsafeDenyAll()) {
-                deny(event, plugin.prefixedComponent(plugin.getFailsafeMessage()));
-                plugin.handleDenied(DenyReason.FAILSAFE, name, ipStr);
-            }
+            handleFailsafe(event, name, ipStr);
             return;
         }
 
-        // Whitelist check
+        // Whitelist check.
         if (!store.isAllowed(ipInt)) {
             event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_WHITELIST,
                     plugin.prefixedComponent(plugin.msg("notAllowed")));
             plugin.handleDenied(DenyReason.NOT_WHITELISTED, name, ipStr);
         }
+    }
+
+    /**
+     * Applies the configured failsafe policy: DENY_ALL kicks the player,
+     * ALLOW_ALL lets them through (but the condition is still logged when denied).
+     */
+    private void handleFailsafe(AsyncPlayerPreLoginEvent event, String name, String ipStr) {
+        if (plugin.isFailsafeDenyAll()) {
+            deny(event, plugin.prefixedComponent(plugin.getFailsafeMessage()));
+            plugin.handleDenied(DenyReason.FAILSAFE, name, ipStr);
+        }
+        // ALLOW_ALL: do nothing — player proceeds.
     }
 
     private static void deny(AsyncPlayerPreLoginEvent event, Component message) {

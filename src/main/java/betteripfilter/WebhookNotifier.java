@@ -22,39 +22,35 @@ public class WebhookNotifier {
     private final RateLimiter limiter;
     private final int perSecondLimit;
     private final AtomicLong droppedByRateLimit = new AtomicLong();
-    private final AtomicLong droppedByQueue = new AtomicLong();
+    private final AtomicLong droppedByQueue     = new AtomicLong();
     private final long statLogIntervalMillis;
-    private volatile long lastStatLogMillis = System.currentTimeMillis();
+    // Guarded by itself — only the worker thread writes after construction.
+    private long lastStatLogMillis;
     private volatile boolean running = true;
     private final Thread worker;
 
     public WebhookNotifier(Logger logger, int queueSize, int perSecondLimit, long statLogIntervalMillis) {
-        this.logger = logger;
-        this.client = HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_1_1)
-                .build();
-        this.queue = new ArrayBlockingQueue<>(Math.max(1, queueSize));
-        this.perSecondLimit = Math.max(1, perSecondLimit);
+        this.logger               = logger;
+        this.client               = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
+        this.queue                = new ArrayBlockingQueue<>(Math.max(1, queueSize));
+        this.perSecondLimit       = Math.max(1, perSecondLimit);
         this.statLogIntervalMillis = Math.max(1000, statLogIntervalMillis);
-        this.limiter = new RateLimiter(CLEANUP_THRESHOLD);
-        this.worker = new Thread(this::runLoop, "BetterIPF-Webhook");
+        this.lastStatLogMillis    = System.currentTimeMillis();
+        this.limiter              = new RateLimiter(CLEANUP_THRESHOLD);
+        this.worker               = new Thread(this::runLoop, "BetterIPF-Webhook");
         this.worker.setDaemon(true);
         this.worker.start();
     }
 
     public void send(String url, int timeoutMs, DenyReason reason, String name, String ip) {
-        if (url == null || url.isBlank() || !running) {
-            return;
-        }
+        if (url == null || url.isBlank() || !running) return;
+
         if (!limiter.tryAcquire(0, 1000, perSecondLimit)) {
             droppedByRateLimit.incrementAndGet();
-            maybeLogDropStats();
             return;
         }
-        WebhookJob job = new WebhookJob(url, timeoutMs, reason, name, ip);
-        if (!queue.offer(job)) {
+        if (!queue.offer(new WebhookJob(url, timeoutMs, reason, name, ip))) {
             droppedByQueue.incrementAndGet();
-            maybeLogDropStats();
         }
     }
 
@@ -62,9 +58,7 @@ public class WebhookNotifier {
         while (running || !queue.isEmpty()) {
             try {
                 WebhookJob job = queue.poll(100, TimeUnit.MILLISECONDS);
-                if (job != null) {
-                    sendNow(job);
-                }
+                if (job != null) sendNow(job);
                 maybeLogDropStats();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -101,53 +95,46 @@ public class WebhookNotifier {
         maybeLogDropStats();
     }
 
+    /** Called only from the worker thread — no synchronization needed on lastStatLogMillis. */
     private void maybeLogDropStats() {
         long now = System.currentTimeMillis();
-        if (now - lastStatLogMillis < statLogIntervalMillis) {
-            return;
-        }
-        long rate = droppedByRateLimit.getAndSet(0);
-        long queueDrops = droppedByQueue.getAndSet(0);
-        if (rate > 0 || queueDrops > 0) {
-            logger.fine("Webhook drops in last interval: rateLimit=" + rate + ", queueFull=" + queueDrops);
+        if (now - lastStatLogMillis < statLogIntervalMillis) return;
+
+        long rate  = droppedByRateLimit.getAndSet(0);
+        long queue = droppedByQueue.getAndSet(0);
+        if (rate > 0 || queue > 0) {
+            logger.fine("Webhook drops in last interval: rateLimit=" + rate + ", queueFull=" + queue);
         }
         lastStatLogMillis = now;
     }
 
     private String buildPayload(DenyReason reason, String name, String ip) {
         String safeName = Objects.requireNonNullElse(name, "");
-        String safeIp = Objects.requireNonNullElse(ip, "");
-        String time = Instant.now().toString();
-        return new StringBuilder(200)
-                .append('{')
-                .append("\"plugin\":\"Better-IP-Filter\",")
-                .append("\"reason\":\"").append(reason.name()).append("\",")
-                .append("\"name\":\"").append(escapeJson(safeName)).append("\",")
-                .append("\"ip\":\"").append(escapeJson(safeIp)).append("\",")
-                .append("\"time\":\"").append(time).append("\"")
-                .append('}')
-                .toString();
+        String safeIp   = Objects.requireNonNullElse(ip,   "");
+        return "{" +
+                "\"plugin\":\"Better-IP-Filter\"," +
+                "\"reason\":\"" + reason.name() + "\"," +
+                "\"name\":\""   + escapeJson(safeName) + "\"," +
+                "\"ip\":\""     + escapeJson(safeIp)   + "\"," +
+                "\"time\":\""   + Instant.now()         + "\"" +
+                "}";
     }
 
-    private String escapeJson(String value) {
-        StringBuilder builder = new StringBuilder(value.length() + 16);
+    private static String escapeJson(String value) {
+        StringBuilder sb = new StringBuilder(value.length() + 16);
         for (int i = 0; i < value.length(); i++) {
             char ch = value.charAt(i);
-            if (ch == '"' || ch == '\\') {
-                builder.append('\\').append(ch);
-            } else if (ch == '\n') {
-                builder.append("\\n");
-            } else if (ch == '\r') {
-                builder.append("\\r");
-            } else if (ch == '\t') {
-                builder.append("\\t");
-            } else {
-                builder.append(ch);
+            switch (ch) {
+                case '"'  -> sb.append("\\\"");
+                case '\\' -> sb.append("\\\\");
+                case '\n' -> sb.append("\\n");
+                case '\r' -> sb.append("\\r");
+                case '\t' -> sb.append("\\t");
+                default   -> sb.append(ch);
             }
         }
-        return builder.toString();
+        return sb.toString();
     }
 
-    private record WebhookJob(String url, int timeoutMs, DenyReason reason, String name, String ip) {
-    }
+    private record WebhookJob(String url, int timeoutMs, DenyReason reason, String name, String ip) {}
 }

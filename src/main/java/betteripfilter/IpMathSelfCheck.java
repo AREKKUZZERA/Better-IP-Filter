@@ -1,7 +1,6 @@
 package betteripfilter;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -52,7 +51,12 @@ public final class IpMathSelfCheck {
         ranges.add(new Range(Ipv4.parseToInt("192.168.0.0"),  Ipv4.parseToInt("192.168.0.10")));
         ranges.add(new Range(Ipv4.parseToInt("192.168.0.11"), Ipv4.parseToInt("192.168.0.20")));
         ranges.add(new Range(Ipv4.parseToInt("192.168.0.15"), Ipv4.parseToInt("192.168.0.30")));
-        ranges.sort(Comparator.comparingInt(r -> r.start));
+
+        // Must sort unsigned — IPv4 ints in the high half (≥ 128.x.x.x) are negative in Java.
+        ranges.sort((a, b) -> {
+            int c = Integer.compareUnsigned(a.start, b.start);
+            return c != 0 ? c : Integer.compareUnsigned(a.end, b.end);
+        });
 
         Range merged = ranges.getFirst();
         for (int i = 1; i < ranges.size(); i++) {

@@ -1,8 +1,10 @@
 name: Better-IP-Filter
-version: 1.3.0
+version: ${project.version}
 main: betteripfilter.BetterIpFilterPlugin
 api-version: "1.21"
 description: Whitelist players by IPv4 address, CIDR range, or IP range.
+authors: []
+website: ""
 
 commands:
   ipf:

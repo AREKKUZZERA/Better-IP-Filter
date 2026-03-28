@@ -15,15 +15,12 @@ public class IpfCommand implements CommandExecutor {
 
     public IpfCommand(BetterIpFilterPlugin plugin, IpStore store) {
         this.plugin = plugin;
-        this.store = store;
+        this.store  = store;
     }
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (args.length == 0) {
-            sendUsage(sender);
-            return true;
-        }
+        if (args.length == 0) { sendUsage(sender); return true; }
 
         return switch (args[0].toLowerCase(Locale.ROOT)) {
             case "add"    -> handleAdd(sender, args);
@@ -33,26 +30,28 @@ public class IpfCommand implements CommandExecutor {
             case "reload" -> handleReload(sender);
             case "on"     -> handleToggle(sender, true);
             case "off"    -> handleToggle(sender, false);
-            default -> { sendUsage(sender); yield true; }
+            default       -> { sendUsage(sender); yield true; }
         };
     }
 
     private boolean handleAdd(CommandSender sender, String[] args) {
         if (!hasPermission(sender, "betteripfilter.add")) return true;
         if (args.length < 2) { sendUsage(sender); return true; }
-        if (!store.isAvailable()) {
-            send(sender, plugin.msg("storeUnavailable"));
-            return true;
-        }
+
         String entry = args[1];
         if (!store.isValidEntry(entry)) {
             send(sender, plugin.msg("invalidIp").replace("{ip}", entry));
+            return true;
+        }
+        if (!store.isAvailable()) {
+            send(sender, plugin.msg("storeUnavailable"));
             return true;
         }
         if (store.contains(entry)) {
             send(sender, plugin.msg("alreadyExists").replace("{ip}", entry));
             return true;
         }
+
         if (store.add(entry)) {
             send(sender, plugin.msg("added").replace("{ip}", entry));
         } else if (!store.isAvailable()) {
@@ -66,18 +65,22 @@ public class IpfCommand implements CommandExecutor {
     private boolean handleRemove(CommandSender sender, String[] args) {
         if (!hasPermission(sender, "betteripfilter.remove")) return true;
         if (args.length < 2) { sendUsage(sender); return true; }
-        if (!store.isAvailable()) {
-            send(sender, plugin.msg("storeUnavailable"));
-            return true;
-        }
+
         String entry = args[1];
         if (!store.isValidEntry(entry)) {
             send(sender, plugin.msg("invalidIp").replace("{ip}", entry));
             return true;
         }
+        if (!store.isAvailable()) {
+            send(sender, plugin.msg("storeUnavailable"));
+            return true;
+        }
         if (!store.contains(entry)) {
             send(sender, plugin.msg("notFound").replace("{ip}", entry));
-        } else if (store.remove(entry)) {
+            return true;
+        }
+
+        if (store.remove(entry)) {
             send(sender, plugin.msg("removed").replace("{ip}", entry));
         } else if (!store.isAvailable()) {
             send(sender, plugin.msg("storeUnavailable"));
@@ -94,10 +97,9 @@ public class IpfCommand implements CommandExecutor {
         if (ips.isEmpty()) {
             send(sender, "&7- (empty)");
         } else {
-            // Send in chunks of 10 to avoid message overflow
+            // Send in chunks of 10 to avoid chat overflow
             for (int i = 0; i < ips.size(); i += 10) {
-                int end = Math.min(ips.size(), i + 10);
-                send(sender, "&f" + String.join("&7, &f", ips.subList(i, end)));
+                send(sender, "&f" + String.join("&7, &f", ips.subList(i, Math.min(ips.size(), i + 10))));
             }
         }
         return true;
@@ -106,17 +108,17 @@ public class IpfCommand implements CommandExecutor {
     private boolean handleStatus(CommandSender sender) {
         if (!hasPermission(sender, "betteripfilter.status")) return true;
         send(sender, plugin.msg("statusHeader"));
-        send(sender, "&7Enabled: &f"         + plugin.isFilteringEnabled());
-        send(sender, "&7Store available: &f" + store.isAvailable());
+        send(sender, "&7Enabled: &f"          + plugin.isFilteringEnabled());
+        send(sender, "&7Store available: &f"  + store.isAvailable());
         send(sender, "&7Whitelist entries: &f" + store.list().size());
-        send(sender, "&7Proxy mode: &f"      + plugin.getProxyMode()
-                + " &7(trusted: &f"          + plugin.getTrustedForwardedIpsCount() + "&7)");
-        send(sender, "&7Rate limit: &f"      + plugin.isRateLimitEnabled()
-                + " &7(window: &f"           + (plugin.getRateLimitWindowMillis() / 1000L)
-                + "s&7, max: &f"             + plugin.getRateLimitMaxAttempts() + "&7)");
-        send(sender, "&7Failsafe mode: &f"   + plugin.getFailsafeMode());
-        send(sender, "&7Webhook: &f"         + plugin.isWebhookEnabled()
-                + " &7(configured: &f"       + (plugin.isWebhookConfigured() ? "yes" : "no") + "&7)");
+        send(sender, "&7Proxy mode: &f"       + plugin.getProxyMode()
+                + " &7(trusted: &f"           + plugin.getTrustedForwardedIpsCount() + "&7)");
+        send(sender, "&7Rate limit: &f"       + plugin.isRateLimitEnabled()
+                + " &7(window: &f"            + (plugin.getRateLimitWindowMillis() / 1000L)
+                + "s&7, max: &f"              + plugin.getRateLimitMaxAttempts() + "&7)");
+        send(sender, "&7Failsafe mode: &f"    + plugin.getFailsafeMode());
+        send(sender, "&7Webhook: &f"          + plugin.isWebhookEnabled()
+                + " &7(configured: &f"        + (plugin.isWebhookConfigured() ? "yes" : "no") + "&7)");
         if (!store.isAvailable() && store.getLastError() != null) {
             send(sender, "&cStore error: &f" + store.getLastError());
         }
@@ -129,11 +131,7 @@ public class IpfCommand implements CommandExecutor {
             plugin.reloadConfig();
             plugin.loadSettings();
             store.load();
-            if (store.isAvailable()) {
-                send(sender, plugin.msg("reloaded"));
-            } else {
-                send(sender, plugin.msg("failedUpdate"));
-            }
+            send(sender, plugin.msg(store.isAvailable() ? "reloaded" : "failedUpdate"));
         } catch (Exception ex) {
             send(sender, plugin.msg("failedUpdate"));
             plugin.getLogger().warning("Reload failed: " + ex.getMessage());
@@ -160,11 +158,11 @@ public class IpfCommand implements CommandExecutor {
 
     private void sendUsage(CommandSender sender) {
         send(sender, "&cUsage: /ipf <subcommand>");
-        send(sender, "&7/ipf add <ip|cidr|range> &f- add to whitelist");
-        send(sender, "&7/ipf remove <entry>       &f- remove from whitelist");
-        send(sender, "&7/ipf list                 &f- list all entries");
-        send(sender, "&7/ipf status               &f- plugin diagnostics");
-        send(sender, "&7/ipf reload               &f- reload config + whitelist");
-        send(sender, "&7/ipf on|off               &f- toggle filtering");
+        send(sender, "&7/ipf add <ip|cidr|range>  &f- add to whitelist");
+        send(sender, "&7/ipf remove <entry>        &f- remove from whitelist");
+        send(sender, "&7/ipf list                  &f- list all entries");
+        send(sender, "&7/ipf status                &f- plugin diagnostics");
+        send(sender, "&7/ipf reload                &f- reload config + whitelist");
+        send(sender, "&7/ipf on|off                &f- toggle filtering");
     }
 }

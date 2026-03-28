@@ -21,52 +21,38 @@ public class IpStore {
 
     public IpStore(BetterIpFilterPlugin plugin) {
         this.plugin = plugin;
-        this.file = new File(plugin.getDataFolder(), "ips.yml");
+        this.file   = new File(plugin.getDataFolder(), "ips.yml");
     }
 
     public void load() {
         synchronized (writeLock) {
-            if (!plugin.getDataFolder().exists() && !plugin.getDataFolder().mkdirs()) {
-                available = false;
-                lastError = "Failed to create plugin data folder.";
-                plugin.getLogger().severe(lastError);
-                return;
-            }
+            if (!ensureDataFolder()) return;
 
             if (!file.exists()) {
                 entries.clear();
-                snapshot = Snapshot.empty();
+                snapshot  = Snapshot.empty();
                 available = true;
                 lastError = null;
                 return;
             }
 
-            YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
-            List<String> loaded = config.getStringList("ips");
-
-            ParseResult result = parseEntries(loaded);
+            List<String> loaded = YamlConfiguration.loadConfiguration(file).getStringList("ips");
+            ParseResult result  = parseEntries(loaded);
             if (!result.success) {
-                available = false;
-                lastError = result.errorMessage;
-                plugin.getLogger().warning("Failed to load ips.yml: " + result.errorMessage);
+                setUnavailable("Failed to load ips.yml: " + result.errorMessage);
                 return;
             }
 
             entries.clear();
             entries.addAll(result.entries);
-            snapshot = result.snapshot;
+            snapshot  = result.snapshot;
             available = true;
             lastError = null;
         }
     }
 
-    public boolean isAvailable() {
-        return available;
-    }
-
-    public String getLastError() {
-        return lastError;
-    }
+    public boolean isAvailable() { return available; }
+    public String  getLastError() { return lastError; }
 
     public boolean isAllowed(int ipInt) {
         Snapshot s = snapshot;
@@ -75,30 +61,24 @@ public class IpStore {
 
     /**
      * Adds an entry. Returns true on success, false if duplicate, invalid, or store error.
-     * Logs a warning with detail when the entry is invalid so operators can diagnose quickly.
      */
     public boolean add(String entry) {
         ParsedEntry parsed = parseEntry(entry);
         if (parsed == null) {
-            plugin.getLogger().warning("Invalid IP address or entry format: '" + entry
-                    + "' — expected a single IPv4 (e.g. 1.2.3.4), CIDR (1.2.3.0/24), or range (1.2.3.0-1.2.3.255)");
+            plugin.getLogger().warning("Invalid IP/format: '" + entry
+                    + "' — expected IPv4 (1.2.3.4), CIDR (1.2.3.0/24), or range (1.2.3.0-1.2.3.255)");
             return false;
         }
         synchronized (writeLock) {
-            if (!entries.add(parsed.normalized)) {
-                return false; // duplicate
-            }
+            if (!entries.add(parsed.normalized)) return false; // duplicate
+
             ParseResult result = parseEntries(entries);
             if (!result.success) {
-                entries.remove(parsed.normalized);
-                available = false;
-                lastError = result.errorMessage;
-                plugin.getLogger().warning("Failed to update whitelist after add: " + result.errorMessage);
+                entries.remove(parsed.normalized); // roll back
+                setUnavailable("Failed to update whitelist after add: " + result.errorMessage);
                 return false;
             }
-            snapshot = result.snapshot;
-            available = true;
-            lastError = null;
+            commitResult(result);
             save();
             return true;
         }
@@ -110,24 +90,19 @@ public class IpStore {
     public boolean remove(String entry) {
         ParsedEntry parsed = parseEntry(entry);
         if (parsed == null) {
-            plugin.getLogger().warning("Invalid IP address or entry format for removal: '" + entry + "'");
+            plugin.getLogger().warning("Invalid IP/format for removal: '" + entry + "'");
             return false;
         }
         synchronized (writeLock) {
-            if (!entries.remove(parsed.normalized)) {
-                return false; // not present
-            }
+            if (!entries.remove(parsed.normalized)) return false; // not present
+
             ParseResult result = parseEntries(entries);
             if (!result.success) {
                 entries.add(parsed.normalized); // roll back
-                available = false;
-                lastError = result.errorMessage;
-                plugin.getLogger().warning("Failed to update whitelist after remove: " + result.errorMessage);
+                setUnavailable("Failed to update whitelist after remove: " + result.errorMessage);
                 return false;
             }
-            snapshot = result.snapshot;
-            available = true;
-            lastError = null;
+            commitResult(result);
             save();
             return true;
         }
@@ -135,15 +110,13 @@ public class IpStore {
 
     public List<String> list() {
         synchronized (writeLock) {
-            List<String> result = new ArrayList<>(entries);
-            Collections.sort(result);
-            return result;
+            List<String> copy = new ArrayList<>(entries);
+            Collections.sort(copy);
+            return copy;
         }
     }
 
-    public boolean isValidEntry(String entry) {
-        return parseEntry(entry) != null;
-    }
+    public boolean isValidEntry(String entry) { return parseEntry(entry) != null; }
 
     public boolean contains(String entry) {
         ParsedEntry parsed = parseEntry(entry);
@@ -153,11 +126,35 @@ public class IpStore {
         }
     }
 
-    private void save() {
-        if (!plugin.getDataFolder().exists() && !plugin.getDataFolder().mkdirs()) {
-            plugin.getLogger().severe("Failed to create plugin data folder.");
-            return;
+    // -------------------------------------------------------------------------
+    // Internal helpers
+    // -------------------------------------------------------------------------
+
+    /** Applies a successful ParseResult to live state. Must hold writeLock. */
+    private void commitResult(ParseResult result) {
+        snapshot  = result.snapshot;
+        available = true;
+        lastError = null;
+    }
+
+    /** Marks the store as unavailable and logs. Must hold writeLock. */
+    private void setUnavailable(String message) {
+        available = false;
+        lastError = message;
+        plugin.getLogger().warning(message);
+    }
+
+    private boolean ensureDataFolder() {
+        File folder = plugin.getDataFolder();
+        if (!folder.exists() && !folder.mkdirs()) {
+            setUnavailable("Failed to create plugin data folder.");
+            return false;
         }
+        return true;
+    }
+
+    private void save() {
+        if (!ensureDataFolder()) return;
         YamlConfiguration config = new YamlConfiguration();
         config.set("ips", list());
         try {
@@ -168,16 +165,15 @@ public class IpStore {
     }
 
     private ParseResult parseEntries(Iterable<String> loaded) {
-        Set<String> normalized = new HashSet<>();
-        List<Range> ranges = new ArrayList<>();
-        int exactCount = 0;
+        Set<String>  normalized = new HashSet<>();
+        List<Range>  ranges     = new ArrayList<>();
+        int          exactCount = 0;
 
         for (String entry : loaded) {
             if (entry == null || entry.isBlank()) continue;
             ParsedEntry parsed = parseEntry(entry);
-            if (parsed == null) {
-                return ParseResult.failure("Invalid whitelist entry: '" + entry + "'");
-            }
+            if (parsed == null) return ParseResult.failure("Invalid whitelist entry: '" + entry + "'");
+
             normalized.add(parsed.normalized);
             switch (parsed.type) {
                 case EXACT -> exactCount++;
@@ -189,7 +185,7 @@ public class IpStore {
         }
 
         IntHashSet exactIps = buildExactSet(normalized, exactCount);
-        int[][] merged = mergeRanges(ranges);
+        int[][]    merged   = mergeRanges(ranges);
         return ParseResult.success(normalized, new Snapshot(exactIps, merged[0], merged[1]));
     }
 
@@ -217,9 +213,7 @@ public class IpStore {
         for (int i = 1; i < ranges.size(); i++) {
             Range next = ranges.get(i);
             if (canMerge(cur, next)) {
-                if (Integer.compareUnsigned(next.end, cur.end) > 0) {
-                    cur = new Range(cur.start, next.end);
-                }
+                if (Integer.compareUnsigned(next.end, cur.end) > 0) cur = new Range(cur.start, next.end);
             } else {
                 merged.add(cur);
                 cur = next;
@@ -236,20 +230,19 @@ public class IpStore {
         return new int[][]{starts, ends};
     }
 
-    private boolean canMerge(Range left, Range right) {
-        // Adjacent or overlapping (handles unsigned wrap at 0xFFFFFFFF too)
-        if (left.end == 0xFFFFFFFF) return true; // left reaches end of address space
+    /** Returns true if right is adjacent to or overlaps left. Handles 0xFFFFFFFF edge. */
+    private static boolean canMerge(Range left, Range right) {
+        if (left.end == 0xFFFFFFFF) return true;
         return Integer.compareUnsigned(right.start, left.end + 1) <= 0;
     }
 
-    private ParsedEntry parseEntry(String raw) {
+    private static ParsedEntry parseEntry(String raw) {
         if (raw == null) return null;
         String s = raw.trim();
         if (s.isEmpty()) return null;
 
         int slash = s.indexOf('/');
         int dash  = s.indexOf('-');
-
         if (slash >= 0 && dash >= 0) return null; // ambiguous
 
         if (slash >= 0) {
@@ -265,7 +258,6 @@ public class IpStore {
         }
 
         if (dash >= 0) {
-            // Avoid splitting on a leading minus (defensive)
             String[] parts = s.split("-", -1);
             if (parts.length != 2) return null;
             int start = Ipv4.parseToInt(parts[0]);
@@ -289,42 +281,36 @@ public class IpStore {
     private record Range(int start, int end) {}
 
     private static final class ParsedEntry {
-        final String normalized;
+        final String    normalized;
         final EntryType type;
-        final int singleIp, prefix, rangeStart, rangeEnd;
+        final int       singleIp, prefix, rangeStart, rangeEnd;
 
         private ParsedEntry(String normalized, EntryType type,
                             int singleIp, int prefix, int rangeStart, int rangeEnd) {
             this.normalized = normalized;
-            this.type = type;
-            this.singleIp = singleIp;
-            this.prefix = prefix;
+            this.type       = type;
+            this.singleIp   = singleIp;
+            this.prefix     = prefix;
             this.rangeStart = rangeStart;
-            this.rangeEnd = rangeEnd;
+            this.rangeEnd   = rangeEnd;
         }
 
-        static ParsedEntry exact(String n, int ip) {
-            return new ParsedEntry(n, EntryType.EXACT, ip, 0, 0, 0);
-        }
-        static ParsedEntry cidr(String n, int ip, int prefix) {
-            return new ParsedEntry(n, EntryType.CIDR, ip, prefix, 0, 0);
-        }
-        static ParsedEntry range(String n, int start, int end) {
-            return new ParsedEntry(n, EntryType.RANGE, 0, 0, start, end);
-        }
+        static ParsedEntry exact(String n, int ip)              { return new ParsedEntry(n, EntryType.EXACT, ip, 0, 0, 0); }
+        static ParsedEntry cidr(String n, int ip, int prefix)   { return new ParsedEntry(n, EntryType.CIDR, ip, prefix, 0, 0); }
+        static ParsedEntry range(String n, int start, int end)  { return new ParsedEntry(n, EntryType.RANGE, 0, 0, start, end); }
     }
 
     private static final class ParseResult {
-        final boolean success;
-        final String errorMessage;
+        final boolean    success;
+        final String     errorMessage;
         final Set<String> entries;
-        final Snapshot snapshot;
+        final Snapshot   snapshot;
 
         private ParseResult(boolean success, String errorMessage, Set<String> entries, Snapshot snapshot) {
-            this.success = success;
+            this.success      = success;
             this.errorMessage = errorMessage;
-            this.entries = entries;
-            this.snapshot = snapshot;
+            this.entries      = entries;
+            this.snapshot     = snapshot;
         }
 
         static ParseResult success(Set<String> entries, Snapshot snapshot) {
@@ -337,12 +323,12 @@ public class IpStore {
 
     private static final class Snapshot {
         final IntHashSet exactIps;
-        final int[] starts, ends;
+        final int[]      starts, ends;
 
         Snapshot(IntHashSet exactIps, int[] starts, int[] ends) {
             this.exactIps = exactIps;
-            this.starts = starts;
-            this.ends = ends;
+            this.starts   = starts;
+            this.ends     = ends;
         }
 
         boolean containsInRange(int ip) {
@@ -354,12 +340,8 @@ public class IpStore {
             int lo = 0, hi = arr.length - 1, result = -1;
             while (lo <= hi) {
                 int mid = (lo + hi) >>> 1;
-                if (Integer.compareUnsigned(arr[mid], key) <= 0) {
-                    result = mid;
-                    lo = mid + 1;
-                } else {
-                    hi = mid - 1;
-                }
+                if (Integer.compareUnsigned(arr[mid], key) <= 0) { result = mid; lo = mid + 1; }
+                else hi = mid - 1;
             }
             return result;
         }
