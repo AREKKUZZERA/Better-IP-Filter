@@ -43,7 +43,7 @@ public class WebhookNotifier {
     }
 
     public void send(String url, int timeoutMs, DenyReason reason, String name, String ip) {
-        if (url == null || url.isBlank() || !running) return;
+        if (!running || !isValidWebhookUrl(url)) return;
 
         if (!limiter.tryAcquire(0, 1000, perSecondLimit)) {
             droppedByRateLimit.incrementAndGet();
@@ -82,6 +82,19 @@ public class WebhookNotifier {
                     logger.log(Level.FINE, "Failed to send webhook notification", ex);
                     return null;
                 });
+    }
+
+    static boolean isValidWebhookUrl(String value) {
+        if (value == null || value.isBlank()) return false;
+        try {
+            URI uri = URI.create(value);
+            String scheme = uri.getScheme();
+            return ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))
+                    && uri.getHost() != null
+                    && !uri.getHost().isBlank();
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
     }
 
     public void shutdown(long timeoutMillis) {

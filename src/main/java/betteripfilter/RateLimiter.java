@@ -23,8 +23,9 @@ public class RateLimiter {
 
     /** Convenience overload that parses an IP string first. */
     public boolean tryAcquire(String key, long windowMillis, int maxAttempts) {
-        int parsed = Ipv4.parseToInt(key);
-        return parsed != Ipv4.INVALID && tryAcquire(parsed, windowMillis, maxAttempts);
+        return Ipv4.parse(key)
+                .stream()
+                .anyMatch(parsed -> tryAcquire(parsed, windowMillis, maxAttempts));
     }
 
     public boolean tryAcquire(int key, long windowMillis, int maxAttempts) {

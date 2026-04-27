@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.OptionalInt;
 import java.util.Set;
 
 public class IpStore {
@@ -193,8 +194,7 @@ public class IpStore {
         IntHashSet set = new IntHashSet(exactCount);
         for (String entry : normalized) {
             if (entry.indexOf('/') < 0 && entry.indexOf('-') < 0) {
-                int ip = Ipv4.parseToInt(entry);
-                if (ip != Ipv4.INVALID) set.add(ip);
+                Ipv4.parse(entry).ifPresent(set::add);
             }
         }
         return set;
@@ -248,8 +248,9 @@ public class IpStore {
         if (slash >= 0) {
             String[] parts = s.split("/", -1);
             if (parts.length != 2) return null;
-            int ip = Ipv4.parseToInt(parts[0]);
-            if (ip == Ipv4.INVALID) return null;
+            OptionalInt parsedIp = Ipv4.parse(parts[0]);
+            if (parsedIp.isEmpty()) return null;
+            int ip = parsedIp.getAsInt();
             int prefix;
             try { prefix = Integer.parseInt(parts[1]); }
             catch (NumberFormatException e) { return null; }
@@ -260,15 +261,18 @@ public class IpStore {
         if (dash >= 0) {
             String[] parts = s.split("-", -1);
             if (parts.length != 2) return null;
-            int start = Ipv4.parseToInt(parts[0]);
-            int end   = Ipv4.parseToInt(parts[1]);
-            if (start == Ipv4.INVALID || end == Ipv4.INVALID) return null;
+            OptionalInt parsedStart = Ipv4.parse(parts[0]);
+            OptionalInt parsedEnd = Ipv4.parse(parts[1]);
+            if (parsedStart.isEmpty() || parsedEnd.isEmpty()) return null;
+            int start = parsedStart.getAsInt();
+            int end = parsedEnd.getAsInt();
             if (Integer.compareUnsigned(start, end) > 0) return null;
             return ParsedEntry.range(Ipv4.toString(start) + "-" + Ipv4.toString(end), start, end);
         }
 
-        int ip = Ipv4.parseToInt(s);
-        if (ip == Ipv4.INVALID) return null;
+        OptionalInt parsedIp = Ipv4.parse(s);
+        if (parsedIp.isEmpty()) return null;
+        int ip = parsedIp.getAsInt();
         return ParsedEntry.exact(Ipv4.toString(ip), ip);
     }
 

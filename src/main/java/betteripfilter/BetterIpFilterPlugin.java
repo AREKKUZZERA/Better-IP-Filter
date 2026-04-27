@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.Locale;
+import java.util.OptionalInt;
 import java.util.Set;
 
 public class BetterIpFilterPlugin extends JavaPlugin {
@@ -118,9 +119,9 @@ public class BetterIpFilterPlugin extends JavaPlugin {
         proxyMode = getConfig().getString("proxy.mode", "DIRECT").toUpperCase(Locale.ROOT);
         trustedForwardedIps = new HashSet<>();
         for (String entry : getConfig().getStringList("proxy.trusted-forwarded-ips")) {
-            int ip = Ipv4.parseToInt(entry);
-            if (ip != Ipv4.INVALID) {
-                trustedForwardedIps.add(ip);
+            OptionalInt ip = Ipv4.parse(entry);
+            if (ip.isPresent()) {
+                trustedForwardedIps.add(ip.getAsInt());
             } else {
                 getLogger().warning("Skipping invalid trusted-forwarded-ip: '" + entry + "'");
             }

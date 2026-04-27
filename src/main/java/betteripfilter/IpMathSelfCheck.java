@@ -26,20 +26,18 @@ public final class IpMathSelfCheck {
 
     private static void testIpv4ParseRoundTrip() {
         String ip = "203.0.113.42";
-        int parsed = Ipv4.parseToInt(ip);
-        assertTrue(parsed != Ipv4.INVALID, "IPv4 parse returned INVALID for " + ip);
+        int parsed = Ipv4.parse(ip).orElseThrow();
         assertTrue(ip.equals(Ipv4.toString(parsed)), "IPv4 roundtrip failed for " + ip);
     }
 
     /** 255.255.255.255 must NOT be treated as INVALID (old bug: INVALID was -1). */
     private static void testBroadcastIpNotInvalid() {
-        int ip = Ipv4.parseToInt("255.255.255.255");
-        assertTrue(ip != Ipv4.INVALID, "255.255.255.255 must not be INVALID");
+        int ip = Ipv4.parse("255.255.255.255").orElseThrow();
         assertTrue("255.255.255.255".equals(Ipv4.toString(ip)), "255.255.255.255 roundtrip failed");
     }
 
     private static void testCidrRange() {
-        int ip    = Ipv4.parseToInt("10.10.10.66");
+        int ip    = Ipv4.parse("10.10.10.66").orElseThrow();
         int start = Ipv4.cidrStart(ip, 24);
         int end   = Ipv4.cidrEnd(ip, 24);
         assertTrue("10.10.10.0".equals(Ipv4.toString(start)),   "CIDR start mismatch");
@@ -48,9 +46,9 @@ public final class IpMathSelfCheck {
 
     private static void testMergeRanges() {
         List<Range> ranges = new ArrayList<>();
-        ranges.add(new Range(Ipv4.parseToInt("192.168.0.0"),  Ipv4.parseToInt("192.168.0.10")));
-        ranges.add(new Range(Ipv4.parseToInt("192.168.0.11"), Ipv4.parseToInt("192.168.0.20")));
-        ranges.add(new Range(Ipv4.parseToInt("192.168.0.15"), Ipv4.parseToInt("192.168.0.30")));
+        ranges.add(new Range(Ipv4.parse("192.168.0.0").orElseThrow(),  Ipv4.parse("192.168.0.10").orElseThrow()));
+        ranges.add(new Range(Ipv4.parse("192.168.0.11").orElseThrow(), Ipv4.parse("192.168.0.20").orElseThrow()));
+        ranges.add(new Range(Ipv4.parse("192.168.0.15").orElseThrow(), Ipv4.parse("192.168.0.30").orElseThrow()));
 
         // Must sort unsigned — IPv4 ints in the high half (≥ 128.x.x.x) are negative in Java.
         ranges.sort((a, b) -> {
@@ -73,11 +71,11 @@ public final class IpMathSelfCheck {
 
     private static void testUnsignedBinarySearch() {
         int[] starts = {
-            Ipv4.parseToInt("1.0.0.0"),
-            Ipv4.parseToInt("128.0.0.0"),
-            Ipv4.parseToInt("255.255.255.0")
+            Ipv4.parse("1.0.0.0").orElseThrow(),
+            Ipv4.parse("128.0.0.0").orElseThrow(),
+            Ipv4.parse("255.255.255.0").orElseThrow()
         };
-        int idx = floorUnsigned(starts, Ipv4.parseToInt("255.255.255.128"));
+        int idx = floorUnsigned(starts, Ipv4.parse("255.255.255.128").orElseThrow());
         assertTrue(idx == 2, "Unsigned floor index mismatch, got " + idx);
     }
 

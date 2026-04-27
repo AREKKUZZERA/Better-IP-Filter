@@ -1,12 +1,110 @@
 # Better-IP-Filter configuration
-# Supports single IPv4 (1.2.3.4), CIDR notation (1.2.3.0/24), and ranges (1.2.3.0-1.2.3.255)
+#
+# Whitelist entries are stored in plugins/Better-IP-Filter/ips.yml.
+# Supported entry formats:
+#   - Single IP: 203.0.113.10
+#   - CIDR:      203.0.113.0/24
+#   - Range:     203.0.113.10-203.0.113.50
 
-# Master switch — set to false to allow all connections without filtering
+# Master switch.
+# false = allow all connections without checking the IP whitelist.
 enabled: true
 
+
+# -----------------------------------------------------------------------------
+# Proxy / Network
+# -----------------------------------------------------------------------------
+proxy:
+  # DIRECT:
+  #   Use the IP address seen by Paper. Use this for servers without a proxy.
+  #
+  # PROXY_GATE:
+  #   Allow only connections coming from trusted-forwarded-ips before running
+  #   whitelist and rate-limit checks. This does not parse forwarded headers.
+  #
+  # For Velocity modern forwarding, keep your forwarding secret configured in
+  # both Velocity and Paper. This gate is an extra source-IP check, not a
+  # replacement for Velocity/Paper forwarding security.
+  mode: "DIRECT"
+
+  # Proxy IPs allowed to reach this backend when mode is PROXY_GATE.
+  # Example:
+  # trusted-forwarded-ips:
+  #   - "127.0.0.1"
+  #   - "203.0.113.5"
+  trusted-forwarded-ips: []
+
+
+# -----------------------------------------------------------------------------
+# Security
+# -----------------------------------------------------------------------------
+ratelimit:
+  # Limits repeated login attempts from the same source IP.
+  enabled: true
+  window-seconds: 10
+  max-attempts: 5
+  message: "&cToo many connection attempts. Try again later."
+
+failsafe:
+  # Used when the whitelist store is unavailable or the connection IP cannot be parsed.
+  #
+  # DENY_ALL:
+  #   Safer default. Reject connections until the issue is fixed.
+  #
+  # ALLOW_ALL:
+  #   Risky. Allows everyone during storage/parsing failure.
+  mode: "DENY_ALL"
+  message: "&cWhitelist unavailable. Try again later."
+
+
+# -----------------------------------------------------------------------------
+# Logging
+# -----------------------------------------------------------------------------
+logging:
+  # Console logging for denied connections.
+  denied: true
+
+  # File logging for denied connections. Treat this file as sensitive because it
+  # contains player names and IP addresses.
+  denied-to-file: true
+  file-name: "denied.log"
+
+  # Async writer tuning. Defaults are suitable for most servers.
+  async-queue-size: 8192
+  async-batch-size: 64
+  async-flush-interval-ms: 1000
+  async-drop-log-interval-seconds: 10
+
+
+# -----------------------------------------------------------------------------
+# Webhook Notifications
+# -----------------------------------------------------------------------------
+webhook:
+  enabled: false
+
+  # Only http:// and https:// URLs are accepted.
+  url: ""
+
+  on-denied: true
+  on-ratelimit: true
+  on-failsafe: true
+
+  timeout-ms: 3000
+  max-per-second: 5
+  max-queue-size: 1000
+
+
+# -----------------------------------------------------------------------------
+# Messages
+# -----------------------------------------------------------------------------
 messages:
   prefix:           "&7[&bBetter-IP-Filter&7] &r"
+
+  # Login deny messages.
   notAllowed:       "&cYour IP address is not allowed on this server."
+  proxyNotTrusted:  "&cConnection denied: proxy not trusted."
+
+  # Command responses.
   enabled:          "&aIP filtering enabled."
   disabled:         "&eIP filtering disabled."
   added:            "&aAdded: &f{ip}"
@@ -20,42 +118,3 @@ messages:
   noPermission:     "&cYou do not have permission to do that."
   reloaded:         "&aConfiguration reloaded."
   statusHeader:     "&bBetter-IP-Filter status:"
-  proxyNotTrusted:  "&cConnection denied: proxy not trusted."
-
-proxy:
-  # DIRECT   — use the real connecting IP (default, works without a proxy)
-  # PROXY_GATE — only allow connections from IPs listed in trusted-forwarded-ips
-  mode: "DIRECT"
-  trusted-forwarded-ips: []
-
-ratelimit:
-  enabled: true
-  window-seconds: 10   # time window for counting attempts
-  max-attempts: 5      # max attempts per window before rate-limiting
-  message: "&cToo many connection attempts. Try again later."
-
-failsafe:
-  # What to do when the whitelist store is unavailable or IP cannot be parsed
-  # DENY_ALL  — reject all connections (safer)
-  # ALLOW_ALL — let everyone in (risky, use only for high-availability setups)
-  mode: "DENY_ALL"
-  message: "&cWhitelist unavailable. Try again later."
-
-logging:
-  denied: true              # log denied connections to server console
-  denied-to-file: true      # also write denied connections to a file
-  file-name: "denied.log"   # relative to the plugin data folder
-  async-queue-size: 8192
-  async-batch-size: 64
-  async-flush-interval-ms: 1000
-  async-drop-log-interval-seconds: 10
-
-webhook:
-  enabled: false
-  url: ""
-  on-denied: true
-  on-ratelimit: true
-  on-failsafe: true
-  timeout-ms: 3000
-  max-per-second: 5
-  max-queue-size: 1000
