@@ -5,7 +5,7 @@
 
   <groupId>betteripfilter</groupId>
   <artifactId>Better-IP-Filter</artifactId>
-  <version>1.4.0</version>
+  <version>1.4.1</version>
   <packaging>jar</packaging>
 
   <name>Better-IP-Filter</name>
@@ -17,6 +17,7 @@
          Modrinth Minotaur plugin reads this to populate supported game versions. -->
     <paper.api.version>1.21.4-R0.1-SNAPSHOT</paper.api.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.build.outputTimestamp>2026-01-01T00:00:00Z</project.build.outputTimestamp>
   </properties>
 
   <repositories>
@@ -58,6 +59,7 @@
         <excludes>
           <exclude>plugin.yml</exclude>
           <exclude>config.yml</exclude>
+          <exclude>betteripfilter-logo.png</exclude>
         </excludes>
       </resource>
     </resources>
@@ -65,12 +67,26 @@
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.4.2</version>
+        <configuration>
+          <archive>
+            <addMavenDescriptor>false</addMavenDescriptor>
+          </archive>
+          <excludes>
+            <exclude>betteripfilter-logo.png</exclude>
+            <exclude>betteripfilter/IpMathSelfCheck*.class</exclude>
+          </excludes>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
         <version>3.13.0</version>
         <configuration>
           <proc>none</proc>
-          <source>${java.version}</source>
-          <target>${java.version}</target>
+          <release>${java.version}</release>
           <encoding>${project.build.sourceEncoding}</encoding>
         </configuration>
       </plugin>
