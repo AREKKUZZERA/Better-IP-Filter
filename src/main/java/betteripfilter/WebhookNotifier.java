@@ -87,11 +87,13 @@ public class WebhookNotifier {
     static boolean isValidWebhookUrl(String value) {
         if (value == null || value.isBlank()) return false;
         try {
-            URI uri = URI.create(value);
+            URI uri = URI.create(value.trim());
             String scheme = uri.getScheme();
             return ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))
                     && uri.getHost() != null
-                    && !uri.getHost().isBlank();
+                    && !uri.getHost().isBlank()
+                    && uri.getRawUserInfo() == null
+                    && uri.getRawFragment() == null;
         } catch (IllegalArgumentException e) {
             return false;
         }

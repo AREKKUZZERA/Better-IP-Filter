@@ -18,6 +18,7 @@ import java.util.Set;
 
 public class BetterIpFilterPlugin extends JavaPlugin {
     private static final int RATE_LIMIT_CLEANUP_THRESHOLD = 5000;
+    private static final String DEFAULT_DENIED_LOG_FILE = "denied.log";
 
     private IpStore ipStore;
     private RateLimiter rateLimiter;
@@ -96,19 +97,27 @@ public class BetterIpFilterPlugin extends JavaPlugin {
                 "&cToo many connection attempts. Try again later.");
 
         String failsafeMode = getConfig().getString("failsafe.mode", "DENY_ALL").toUpperCase(Locale.ROOT);
-        failsafeDenyAll = "DENY_ALL".equals(failsafeMode);
+        failsafeDenyAll = switch (failsafeMode) {
+            case "DENY_ALL" -> true;
+            case "ALLOW_ALL" -> false;
+            default -> {
+                getLogger().warning("Unknown failsafe.mode '" + failsafeMode + "', using DENY_ALL.");
+                yield true;
+            }
+        };
         failsafeMessage = getConfig().getString("failsafe.message", "&cWhitelist unavailable. Try again later.");
 
         logDenied                = getConfig().getBoolean("logging.denied", true);
         logDeniedToFile          = getConfig().getBoolean("logging.denied-to-file", true);
-        deniedLogFileName        = getConfig().getString("logging.file-name", "denied.log");
+        deniedLogFileName        = safeLogFileName(getConfig().getString("logging.file-name", DEFAULT_DENIED_LOG_FILE));
         deniedLogQueueSize       = Math.max(100, getConfig().getInt("logging.async-queue-size", 8192));
         deniedLogBatchSize       = Math.max(1,   getConfig().getInt("logging.async-batch-size", 64));
         deniedLogFlushIntervalMs = Math.max(100, getConfig().getLong("logging.async-flush-interval-ms", 1000));
         deniedLogDropNoticeSeconds = Math.max(1, getConfig().getInt("logging.async-drop-log-interval-seconds", 10));
 
         webhookEnabled     = getConfig().getBoolean("webhook.enabled", false);
-        webhookUrl         = getConfig().getString("webhook.url", "");
+        String configuredWebhookUrl = getConfig().getString("webhook.url", "");
+        webhookUrl         = configuredWebhookUrl == null ? "" : configuredWebhookUrl.trim();
         webhookOnDenied    = getConfig().getBoolean("webhook.on-denied", true);
         webhookOnRateLimit = getConfig().getBoolean("webhook.on-ratelimit", true);
         webhookOnFailsafe  = getConfig().getBoolean("webhook.on-failsafe", true);
@@ -117,6 +126,10 @@ public class BetterIpFilterPlugin extends JavaPlugin {
         webhookQueueSize   = Math.max(10,  getConfig().getInt("webhook.max-queue-size", 1000));
 
         proxyMode = getConfig().getString("proxy.mode", "DIRECT").toUpperCase(Locale.ROOT);
+        if (!"DIRECT".equals(proxyMode) && !"PROXY_GATE".equals(proxyMode)) {
+            getLogger().warning("Unknown proxy.mode '" + proxyMode + "', using DIRECT.");
+            proxyMode = "DIRECT";
+        }
         trustedForwardedIps = new HashSet<>();
         for (String entry : getConfig().getStringList("proxy.trusted-forwarded-ips")) {
             OptionalInt ip = Ipv4.parse(entry);
@@ -133,7 +146,7 @@ public class BetterIpFilterPlugin extends JavaPlugin {
         deniedLogWriter = logDeniedToFile
                 ? new AsyncDeniedLogWriter(
                         getLogger(),
-                        Path.of(getDataFolder().getPath(), deniedLogFileName),
+                        getDataFolder().toPath().resolve(deniedLogFileName),
                         deniedLogQueueSize,
                         deniedLogBatchSize,
                         deniedLogFlushIntervalMs,
@@ -141,7 +154,24 @@ public class BetterIpFilterPlugin extends JavaPlugin {
                 : null;
 
         if (webhookNotifier != null) webhookNotifier.shutdown(1000);
-        webhookNotifier = new WebhookNotifier(getLogger(), webhookQueueSize, webhookMaxPerSecond, 10_000);
+        webhookNotifier = null;
+        if (webhookEnabled) {
+            if (WebhookNotifier.isValidWebhookUrl(webhookUrl)) {
+                webhookNotifier = new WebhookNotifier(getLogger(), webhookQueueSize, webhookMaxPerSecond, 10_000);
+            } else {
+                webhookEnabled = false;
+                getLogger().warning("Webhook is enabled, but webhook.url is invalid; notifications disabled.");
+            }
+        }
+    }
+
+    private String safeLogFileName(String configured) {
+        String value = configured == null ? "" : configured.trim();
+        if (value.matches("[A-Za-z0-9._-]{1,80}") && !".".equals(value) && !"..".equals(value)) {
+            return value;
+        }
+        getLogger().warning("Unsafe logging.file-name '" + configured + "', using " + DEFAULT_DENIED_LOG_FILE + ".");
+        return DEFAULT_DENIED_LOG_FILE;
     }
 
     // -------------------------------------------------------------------------
@@ -189,7 +219,7 @@ public class BetterIpFilterPlugin extends JavaPlugin {
     // -------------------------------------------------------------------------
 
     public boolean isWebhookEnabled()    { return webhookEnabled; }
-    public boolean isWebhookConfigured() { return webhookEnabled && webhookUrl != null && !webhookUrl.isBlank(); }
+    public boolean isWebhookConfigured() { return webhookNotifier != null; }
 
     // -------------------------------------------------------------------------
     // Deny handling
@@ -214,7 +244,7 @@ public class BetterIpFilterPlugin extends JavaPlugin {
     }
 
     private boolean shouldSendWebhook(DenyReason reason) {
-        if (!webhookEnabled || webhookUrl == null || webhookUrl.isBlank()) return false;
+        if (webhookNotifier == null) return false;
         return switch (reason) {
             case NOT_WHITELISTED, PROXY_NOT_TRUSTED -> webhookOnDenied;
             case RATE_LIMIT -> webhookOnRateLimit;

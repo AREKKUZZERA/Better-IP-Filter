@@ -65,7 +65,7 @@ logging:
   denied: true
 
   # File logging for denied connections. Treat this file as sensitive because it
-  # contains player names and IP addresses.
+  # contains player names and IP addresses. Only a plain file name is accepted.
   denied-to-file: true
   file-name: "denied.log"
 
@@ -82,7 +82,7 @@ logging:
 webhook:
   enabled: false
 
-  # Only http:// and https:// URLs are accepted.
+  # Only http:// and https:// URLs without user-info or fragments are accepted.
   url: ""
 
   on-denied: true
