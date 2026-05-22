@@ -1,10 +1,16 @@
-# Better-IP-Filter configuration
+# Better-IP-Filter configuration.
 #
 # Whitelist entries are stored in plugins/Better-IP-Filter/ips.yml.
 # Supported entry formats:
 #   - Single IP: 203.0.113.10
 #   - CIDR:      203.0.113.0/24
 #   - Range:     203.0.113.10-203.0.113.50
+#
+# Recommended setup:
+#   1. Keep failsafe.mode as DENY_ALL unless you fully understand the risk.
+#   2. Use DIRECT for a normal standalone server.
+#   3. Use PROXY_GATE only when this backend is reachable through trusted proxies.
+#   4. Treat denied logs and webhook payloads as sensitive: they contain IPs.
 
 # Master switch.
 # false = allow all connections without checking the IP whitelist.
@@ -28,6 +34,8 @@ proxy:
   mode: "DIRECT"
 
   # Proxy IPs allowed to reach this backend when mode is PROXY_GATE.
+  # Leave empty in DIRECT mode.
+  # If PROXY_GATE is enabled with an empty list, every connection is denied.
   # Example:
   # trusted-forwarded-ips:
   #   - "127.0.0.1"
@@ -40,6 +48,7 @@ proxy:
 # -----------------------------------------------------------------------------
 ratelimit:
   # Limits repeated login attempts from the same source IP.
+  # Raise max-attempts only if legitimate players are being throttled.
   enabled: true
   window-seconds: 10
   max-attempts: 5
@@ -70,6 +79,7 @@ logging:
   file-name: "denied.log"
 
   # Async writer tuning. Defaults are suitable for most servers.
+  # Lower queue sizes save memory. Higher queue sizes tolerate short bursts.
   async-queue-size: 8192
   async-batch-size: 64
   async-flush-interval-ms: 1000
@@ -83,7 +93,11 @@ webhook:
   enabled: false
 
   # Only http:// and https:// URLs without user-info or fragments are accepted.
+  # Local/private literal addresses are blocked by default to reduce SSRF risk.
   url: ""
+
+  # Set true only for a trusted local relay that you operate yourself.
+  allow-local-addresses: false
 
   on-denied: true
   on-ratelimit: true

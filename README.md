@@ -1,7 +1,7 @@
 ![BetterIPFILTER](src/main/resources/betteripfilter-logo.png)
 
 ![Java Version](https://img.shields.io/badge/Java-21+-blue)
-![PaperMC](https://img.shields.io/badge/Paper-1.21.x-white)
+![PaperMC](https://img.shields.io/badge/Paper-1.21--26.1.2-white)
 ![Release](https://img.shields.io/github/v/release/AREKKUZZERA/better-IP-Filter?style=flat-square&logo=github)
 [![Modrinth](https://img.shields.io/badge/Modrinth-Available-1bd96a?logo=modrinth&logoColor=white)](https://modrinth.com/plugin/better-ip-filter)
 
@@ -29,7 +29,7 @@ It performs early IP validation during the login process and blocks connections 
 ## 📦 Requirements
 
 - **Java:** 21 or newer  
-- **Server:** Paper 1.21 - 1.21.11  
+- **Server:** Paper 1.21 - 1.21.11, 26.1 - 26.1.2
 - **Build tool:** Maven (only if building from source)
 
 ---
@@ -97,13 +97,13 @@ logging:
 webhook:
   enabled: false
   url: ""
+  allow-local-addresses: false
   on-denied: true
   on-ratelimit: true
   on-failsafe: true
   timeout-ms: 3000
   max-per-second: 5
   max-queue-size: 1000
-  format: "JSON"
 ```
 
 ### Key options
@@ -113,9 +113,15 @@ webhook:
 * `proxy.mode` - connection semantics: DIRECT or PROXY_GATE
 * `proxy.trusted-forwarded-ips` - list of trusted proxy IPs used as a gate
 * `ratelimit` - connection attempt throttling
-* `failsafe` - what to do when storage/proxy checks fail
+* `failsafe` - what to do when storage or IP parsing fails
 * `logging` - audit logging for denied connections
 * `webhook` - optional JSON notifications for denies
+
+Security defaults:
+
+* `failsafe.mode: "DENY_ALL"` rejects joins when whitelist storage or IP parsing is unavailable.
+* `webhook.allow-local-addresses: false` blocks literal localhost/private webhook targets by default.
+* Denied logs and webhook payloads contain player names and IP addresses; keep them private.
 
 ### Whitelist entry formats
 
@@ -171,7 +177,7 @@ Entries are normalized when saved to `ips.yml`.
 * For Velocity modern forwarding, security must primarily rely on the forwarding secret configured in both Paper and Velocity.
   The plugin's proxy gate is an additional connection-level IP gate and does not parse forwarded headers.
 * Rate limiting throttles rapid login attempts based on source IP
-* Failsafe mode controls what happens when storage or proxy trust is unavailable
+* Failsafe mode controls what happens when storage or IP parsing is unavailable
 * Denied log entries include IP addresses (privacy note: treat logs as sensitive)
 
 ---
@@ -210,7 +216,7 @@ mvn clean package
 The compiled JAR will be available in:
 
 ```
-target/Better-IP-Filter-1.0.0.jar
+target/Better-IP-Filter-1.4.3.jar
 ```
 
 ---
@@ -218,7 +224,8 @@ target/Better-IP-Filter-1.0.0.jar
 ## ✅ Compatibility
 
 * ✔ Paper/Spigot/etc
-* ✔ Minecraft 1.21 – 1.21.11
+* ✔ Minecraft 1.21 - 1.21.11
+* ✔ Minecraft 26.1 - 26.1.2
 
 ---
 

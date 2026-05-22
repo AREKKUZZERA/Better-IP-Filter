@@ -26,6 +26,8 @@ public class BetterIpFilterPlugin extends JavaPlugin {
     private AsyncDeniedLogWriter deniedLogWriter;
 
     // Settings loaded from config
+    private boolean filteringEnabled;
+
     private boolean rateLimitEnabled;
     private long rateLimitWindowMillis;
     private int rateLimitMaxAttempts;
@@ -47,6 +49,7 @@ public class BetterIpFilterPlugin extends JavaPlugin {
     private boolean webhookOnDenied;
     private boolean webhookOnRateLimit;
     private boolean webhookOnFailsafe;
+    private boolean webhookAllowLocalAddresses;
     private int webhookTimeoutMs;
     private int webhookMaxPerSecond;
     private int webhookQueueSize;
@@ -89,6 +92,8 @@ public class BetterIpFilterPlugin extends JavaPlugin {
     }
 
     public void loadSettings() {
+        filteringEnabled     = getConfig().getBoolean("enabled", true);
+
         rateLimitEnabled     = getConfig().getBoolean("ratelimit.enabled", true);
         int windowSec        = Math.max(1, getConfig().getInt("ratelimit.window-seconds", 10));
         rateLimitWindowMillis = windowSec * 1000L;
@@ -96,7 +101,7 @@ public class BetterIpFilterPlugin extends JavaPlugin {
         rateLimitMessage     = getConfig().getString("ratelimit.message",
                 "&cToo many connection attempts. Try again later.");
 
-        String failsafeMode = getConfig().getString("failsafe.mode", "DENY_ALL").toUpperCase(Locale.ROOT);
+        String failsafeMode = configString("failsafe.mode", "DENY_ALL").toUpperCase(Locale.ROOT);
         failsafeDenyAll = switch (failsafeMode) {
             case "DENY_ALL" -> true;
             case "ALLOW_ALL" -> false;
@@ -121,11 +126,12 @@ public class BetterIpFilterPlugin extends JavaPlugin {
         webhookOnDenied    = getConfig().getBoolean("webhook.on-denied", true);
         webhookOnRateLimit = getConfig().getBoolean("webhook.on-ratelimit", true);
         webhookOnFailsafe  = getConfig().getBoolean("webhook.on-failsafe", true);
+        webhookAllowLocalAddresses = getConfig().getBoolean("webhook.allow-local-addresses", false);
         webhookTimeoutMs   = Math.max(500, getConfig().getInt("webhook.timeout-ms", 3000));
         webhookMaxPerSecond = Math.max(1,  getConfig().getInt("webhook.max-per-second", 5));
         webhookQueueSize   = Math.max(10,  getConfig().getInt("webhook.max-queue-size", 1000));
 
-        proxyMode = getConfig().getString("proxy.mode", "DIRECT").toUpperCase(Locale.ROOT);
+        proxyMode = configString("proxy.mode", "DIRECT").toUpperCase(Locale.ROOT);
         if (!"DIRECT".equals(proxyMode) && !"PROXY_GATE".equals(proxyMode)) {
             getLogger().warning("Unknown proxy.mode '" + proxyMode + "', using DIRECT.");
             proxyMode = "DIRECT";
@@ -138,6 +144,9 @@ public class BetterIpFilterPlugin extends JavaPlugin {
             } else {
                 getLogger().warning("Skipping invalid trusted-forwarded-ip: '" + entry + "'");
             }
+        }
+        if (isProxyGateEnabled() && trustedForwardedIps.isEmpty()) {
+            getLogger().warning("proxy.mode is PROXY_GATE, but proxy.trusted-forwarded-ips is empty; all connections will be denied.");
         }
 
         rateLimiter = new RateLimiter(RATE_LIMIT_CLEANUP_THRESHOLD);
@@ -156,8 +165,13 @@ public class BetterIpFilterPlugin extends JavaPlugin {
         if (webhookNotifier != null) webhookNotifier.shutdown(1000);
         webhookNotifier = null;
         if (webhookEnabled) {
-            if (WebhookNotifier.isValidWebhookUrl(webhookUrl)) {
-                webhookNotifier = new WebhookNotifier(getLogger(), webhookQueueSize, webhookMaxPerSecond, 10_000);
+            if (WebhookNotifier.isValidWebhookUrl(webhookUrl, webhookAllowLocalAddresses)) {
+                webhookNotifier = new WebhookNotifier(
+                        getLogger(),
+                        webhookQueueSize,
+                        webhookMaxPerSecond,
+                        10_000,
+                        webhookAllowLocalAddresses);
             } else {
                 webhookEnabled = false;
                 getLogger().warning("Webhook is enabled, but webhook.url is invalid; notifications disabled.");
@@ -174,15 +188,24 @@ public class BetterIpFilterPlugin extends JavaPlugin {
         return DEFAULT_DENIED_LOG_FILE;
     }
 
+    private String configString(String path, String fallback) {
+        String value = getConfig().getString(path, fallback);
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+        return value.trim();
+    }
+
     // -------------------------------------------------------------------------
     // Filtering state
     // -------------------------------------------------------------------------
 
     public boolean isFilteringEnabled() {
-        return getConfig().getBoolean("enabled", true);
+        return filteringEnabled;
     }
 
     public void setFilteringEnabled(boolean enabled) {
+        filteringEnabled = enabled;
         getConfig().set("enabled", enabled);
         saveConfig();
     }
@@ -253,9 +276,19 @@ public class BetterIpFilterPlugin extends JavaPlugin {
     }
 
     private String formatDeniedLine(DenyReason reason, String name, String ip) {
-        String safeName = (name == null || name.isBlank()) ? "-" : name;
-        String safeIp   = (ip   == null || ip.isBlank())   ? "-" : ip;
+        String safeName = safeLogField(name);
+        String safeIp   = safeLogField(ip);
         return Instant.now() + " " + reason.name() + " " + safeName + " " + safeIp;
+    }
+
+    private static String safeLogField(String value) {
+        if (value == null || value.isBlank()) return "-";
+        StringBuilder sb = new StringBuilder(Math.min(value.length(), 80));
+        for (int i = 0; i < value.length() && sb.length() < 80; i++) {
+            char ch = value.charAt(i);
+            sb.append(Character.isISOControl(ch) || Character.isWhitespace(ch) ? '_' : ch);
+        }
+        return sb.isEmpty() ? "-" : sb.toString();
     }
 
     // -------------------------------------------------------------------------

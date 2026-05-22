@@ -15,12 +15,20 @@ import java.util.logging.Logger;
 
 public class WebhookNotifier {
     private static final int CLEANUP_THRESHOLD = 2048;
+    private static final int IPV4_UNSPECIFIED = Ipv4.parse("0.0.0.0").orElseThrow();
+    private static final int IPV4_PRIVATE_10 = Ipv4.parse("10.0.0.0").orElseThrow();
+    private static final int IPV4_LOOPBACK = Ipv4.parse("127.0.0.0").orElseThrow();
+    private static final int IPV4_LINK_LOCAL = Ipv4.parse("169.254.0.0").orElseThrow();
+    private static final int IPV4_PRIVATE_172 = Ipv4.parse("172.16.0.0").orElseThrow();
+    private static final int IPV4_PRIVATE_192 = Ipv4.parse("192.168.0.0").orElseThrow();
+    private static final int IPV4_MULTICAST = Ipv4.parse("224.0.0.0").orElseThrow();
 
     private final HttpClient client;
     private final Logger logger;
     private final ArrayBlockingQueue<WebhookJob> queue;
     private final RateLimiter limiter;
     private final int perSecondLimit;
+    private final boolean allowLocalAddresses;
     private final AtomicLong droppedByRateLimit = new AtomicLong();
     private final AtomicLong droppedByQueue     = new AtomicLong();
     private final long statLogIntervalMillis;
@@ -30,10 +38,16 @@ public class WebhookNotifier {
     private final Thread worker;
 
     public WebhookNotifier(Logger logger, int queueSize, int perSecondLimit, long statLogIntervalMillis) {
+        this(logger, queueSize, perSecondLimit, statLogIntervalMillis, false);
+    }
+
+    public WebhookNotifier(Logger logger, int queueSize, int perSecondLimit, long statLogIntervalMillis,
+                           boolean allowLocalAddresses) {
         this.logger               = logger;
         this.client               = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
         this.queue                = new ArrayBlockingQueue<>(Math.max(1, queueSize));
         this.perSecondLimit       = Math.max(1, perSecondLimit);
+        this.allowLocalAddresses  = allowLocalAddresses;
         this.statLogIntervalMillis = Math.max(1000, statLogIntervalMillis);
         this.lastStatLogMillis    = System.currentTimeMillis();
         this.limiter              = new RateLimiter(CLEANUP_THRESHOLD);
@@ -43,7 +57,7 @@ public class WebhookNotifier {
     }
 
     public void send(String url, int timeoutMs, DenyReason reason, String name, String ip) {
-        if (!running || !isValidWebhookUrl(url)) return;
+        if (!running || !isValidWebhookUrl(url, allowLocalAddresses)) return;
 
         if (!limiter.tryAcquire(0, 1000, perSecondLimit)) {
             droppedByRateLimit.incrementAndGet();
@@ -85,6 +99,10 @@ public class WebhookNotifier {
     }
 
     static boolean isValidWebhookUrl(String value) {
+        return isValidWebhookUrl(value, false);
+    }
+
+    static boolean isValidWebhookUrl(String value, boolean allowLocalAddresses) {
         if (value == null || value.isBlank()) return false;
         try {
             URI uri = URI.create(value.trim());
@@ -93,10 +111,35 @@ public class WebhookNotifier {
                     && uri.getHost() != null
                     && !uri.getHost().isBlank()
                     && uri.getRawUserInfo() == null
-                    && uri.getRawFragment() == null;
+                    && uri.getRawFragment() == null
+                    && (allowLocalAddresses || !isLocalWebhookAddress(uri.getHost()));
         } catch (IllegalArgumentException e) {
             return false;
         }
+    }
+
+    private static boolean isLocalWebhookAddress(String host) {
+        String normalized = host.toLowerCase();
+        if ("localhost".equals(normalized) || normalized.endsWith(".localhost")) {
+            return true;
+        }
+
+        return Ipv4.parse(normalized).stream().anyMatch(WebhookNotifier::isLocalIpv4);
+    }
+
+    private static boolean isLocalIpv4(int ip) {
+        return isInCidr(ip, IPV4_UNSPECIFIED, 8)
+                || isInCidr(ip, IPV4_PRIVATE_10, 8)
+                || isInCidr(ip, IPV4_LOOPBACK, 8)
+                || isInCidr(ip, IPV4_LINK_LOCAL, 16)
+                || isInCidr(ip, IPV4_PRIVATE_172, 12)
+                || isInCidr(ip, IPV4_PRIVATE_192, 16)
+                || isInCidr(ip, IPV4_MULTICAST, 4);
+    }
+
+    private static boolean isInCidr(int ip, int networkIp, int prefix) {
+        return Integer.compareUnsigned(ip, Ipv4.cidrStart(networkIp, prefix)) >= 0
+                && Integer.compareUnsigned(ip, Ipv4.cidrEnd(networkIp, prefix)) <= 0;
     }
 
     public void shutdown(long timeoutMillis) {
@@ -145,7 +188,13 @@ public class WebhookNotifier {
                 case '\n' -> sb.append("\\n");
                 case '\r' -> sb.append("\\r");
                 case '\t' -> sb.append("\\t");
-                default   -> sb.append(ch);
+                default   -> {
+                    if (ch < 0x20) {
+                        sb.append(String.format("\\u%04x", (int) ch));
+                    } else {
+                        sb.append(ch);
+                    }
+                }
             }
         }
         return sb.toString();
