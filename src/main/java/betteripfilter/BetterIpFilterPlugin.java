@@ -15,6 +15,7 @@ import java.util.HashSet;
 import java.util.Locale;
 import java.util.OptionalInt;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class BetterIpFilterPlugin extends JavaPlugin {
     private static final int RATE_LIMIT_CLEANUP_THRESHOLD = 5000;
@@ -56,6 +57,10 @@ public class BetterIpFilterPlugin extends JavaPlugin {
 
     private String proxyMode;
     private Set<Integer> trustedForwardedIps;
+    private final AtomicLong deniedNotWhitelisted = new AtomicLong();
+    private final AtomicLong deniedProxyNotTrusted = new AtomicLong();
+    private final AtomicLong deniedRateLimit = new AtomicLong();
+    private final AtomicLong deniedFailsafe = new AtomicLong();
 
     @Override
     public void onEnable() {
@@ -249,6 +254,7 @@ public class BetterIpFilterPlugin extends JavaPlugin {
     // -------------------------------------------------------------------------
 
     public void handleDenied(DenyReason reason, String name, String ip) {
+        incrementDeniedCounter(reason);
         String line = null; // built lazily — avoid formatting when neither sink needs it
 
         if (logDenied) {
@@ -274,6 +280,20 @@ public class BetterIpFilterPlugin extends JavaPlugin {
             case FAILSAFE   -> webhookOnFailsafe;
         };
     }
+
+    private void incrementDeniedCounter(DenyReason reason) {
+        switch (reason) {
+            case NOT_WHITELISTED -> deniedNotWhitelisted.incrementAndGet();
+            case PROXY_NOT_TRUSTED -> deniedProxyNotTrusted.incrementAndGet();
+            case RATE_LIMIT -> deniedRateLimit.incrementAndGet();
+            case FAILSAFE -> deniedFailsafe.incrementAndGet();
+        }
+    }
+
+    public long getDeniedNotWhitelistedCount() { return deniedNotWhitelisted.get(); }
+    public long getDeniedProxyNotTrustedCount() { return deniedProxyNotTrusted.get(); }
+    public long getDeniedRateLimitCount() { return deniedRateLimit.get(); }
+    public long getDeniedFailsafeCount() { return deniedFailsafe.get(); }
 
     private String formatDeniedLine(DenyReason reason, String name, String ip) {
         String safeName = safeLogField(name);

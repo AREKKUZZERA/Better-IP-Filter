@@ -1,6 +1,7 @@
 # Better-IP-Filter configuration.
 #
-# Whitelist entries are stored in plugins/Better-IP-Filter/ips.yml.
+# Whitelist entries and optional notes are stored in plugins/Better-IP-Filter/ips.yml.
+# Temporary entries added with /ipf addtemp are memory-only and expire automatically.
 # Supported entry formats:
 #   - Single IP: 203.0.113.10
 #   - CIDR:      203.0.113.0/24
@@ -94,6 +95,8 @@ webhook:
 
   # Only http:// and https:// URLs without user-info or fragments are accepted.
   # Local/private literal addresses are blocked by default to reduce SSRF risk.
+  # Before sending, the worker also resolves the host and blocks local/private
+  # DNS results while allow-local-addresses is false.
   url: ""
 
   # Set true only for a trusted local relay that you operate yourself.

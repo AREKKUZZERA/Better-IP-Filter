@@ -10,7 +10,7 @@ import java.util.Locale;
 
 public class IpfTabCompleter implements TabCompleter {
     private static final List<String> SUBCOMMANDS =
-            List.of("add", "remove", "list", "status", "reload", "on", "off");
+            List.of("add", "addtemp", "remove", "check", "list", "status", "reload", "on", "off");
 
     private final IpStore store;
 
@@ -22,6 +22,9 @@ public class IpfTabCompleter implements TabCompleter {
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) return filterPrefix(SUBCOMMANDS, args[0]);
         if (args.length == 2 && "remove".equalsIgnoreCase(args[0])) return filterPrefix(store.list(), args[1]);
+        if (args.length == 3 && "addtemp".equalsIgnoreCase(args[0])) {
+            return filterPrefix(List.of("30m", "2h", "7d"), args[2]);
+        }
         return List.of();
     }
 

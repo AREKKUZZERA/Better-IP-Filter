@@ -1,6 +1,8 @@
 package betteripfilter;
 
+import java.net.InetAddress;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -83,9 +85,15 @@ public class WebhookNotifier {
     }
 
     private void sendNow(WebhookJob job) {
+        URI uri = URI.create(job.url);
+        if (!isResolvedWebhookDestinationAllowed(uri)) {
+            logger.fine("Blocked webhook notification to local/private resolved address: " + uri.getHost());
+            return;
+        }
+
         String payload = buildPayload(job.reason, job.name, job.ip);
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(job.url))
+                .uri(uri)
                 .timeout(Duration.ofMillis(job.timeoutMs))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(payload))
@@ -125,6 +133,31 @@ public class WebhookNotifier {
         }
 
         return Ipv4.parse(normalized).stream().anyMatch(WebhookNotifier::isLocalIpv4);
+    }
+
+    private boolean isResolvedWebhookDestinationAllowed(URI uri) {
+        if (allowLocalAddresses) return true;
+        String host = uri.getHost();
+        if (host == null || host.isBlank()) return false;
+        try {
+            for (InetAddress address : InetAddress.getAllByName(host)) {
+                if (isLocalAddress(address)) return false;
+            }
+            return true;
+        } catch (UnknownHostException e) {
+            return false;
+        }
+    }
+
+    private static boolean isLocalAddress(InetAddress address) {
+        if (address.isAnyLocalAddress()
+                || address.isLoopbackAddress()
+                || address.isLinkLocalAddress()
+                || address.isSiteLocalAddress()
+                || address.isMulticastAddress()) {
+            return true;
+        }
+        return Ipv4.fromInetAddressOptional(address).stream().anyMatch(WebhookNotifier::isLocalIpv4);
     }
 
     private static boolean isLocalIpv4(int ip) {

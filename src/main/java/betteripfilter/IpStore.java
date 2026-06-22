@@ -6,8 +6,10 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.OptionalInt;
 import java.util.Set;
 
@@ -16,6 +18,8 @@ public class IpStore {
     private final File file;
     private final Object writeLock = new Object();
     private final Set<String> entries = new HashSet<>();
+    private final Map<String, String> notes = new HashMap<>();
+    private final Map<String, Long> temporaryExpirations = new HashMap<>();
     private volatile Snapshot snapshot = Snapshot.empty();
     private volatile boolean available = true;
     private volatile String lastError;
@@ -31,13 +35,16 @@ public class IpStore {
 
             if (!file.exists()) {
                 entries.clear();
+                notes.clear();
+                temporaryExpirations.clear();
                 snapshot  = Snapshot.empty();
                 available = true;
                 lastError = null;
                 return;
             }
 
-            List<String> loaded = YamlConfiguration.loadConfiguration(file).getStringList("ips");
+            YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
+            List<String> loaded = config.getStringList("ips");
             ParseResult result  = parseEntries(loaded);
             if (!result.success) {
                 setUnavailable("Failed to load ips.yml: " + result.errorMessage);
@@ -46,6 +53,8 @@ public class IpStore {
 
             entries.clear();
             entries.addAll(result.entries);
+            temporaryExpirations.clear();
+            loadNotes(config);
             snapshot  = result.snapshot;
             available = true;
             lastError = null;
@@ -56,6 +65,7 @@ public class IpStore {
     public String  getLastError() { return lastError; }
 
     public boolean isAllowed(int ipInt) {
+        cleanupExpiredTemporaryEntries();
         Snapshot s = snapshot;
         return s.exactIps.contains(ipInt) || s.containsInRange(ipInt);
     }
@@ -72,8 +82,9 @@ public class IpStore {
         }
         synchronized (writeLock) {
             if (!entries.add(parsed.normalized)) return false; // duplicate
+            temporaryExpirations.remove(parsed.normalized);
 
-            ParseResult result = parseEntries(entries);
+            ParseResult result = parseEntries(liveEntries());
             if (!result.success) {
                 entries.remove(parsed.normalized); // roll back
                 setUnavailable("Failed to update whitelist after add: " + result.errorMessage);
@@ -81,6 +92,39 @@ public class IpStore {
             }
             commitResult(result);
             save();
+            return true;
+        }
+    }
+
+    public boolean add(String entry, String note) {
+        boolean added = add(entry);
+        if (added && note != null && !note.isBlank()) {
+            setNote(entry, note);
+        }
+        return added;
+    }
+
+    public boolean addTemporary(String entry, long expiresAtMillis, String note) {
+        ParsedEntry parsed = parseEntry(entry);
+        if (parsed == null || expiresAtMillis <= System.currentTimeMillis()) {
+            return false;
+        }
+        synchronized (writeLock) {
+            if (entries.contains(parsed.normalized) || temporaryExpirations.containsKey(parsed.normalized)) return false;
+
+            temporaryExpirations.put(parsed.normalized, expiresAtMillis);
+            if (note != null && !note.isBlank()) {
+                notes.put(parsed.normalized, sanitizeNote(note));
+            }
+
+            ParseResult result = parseEntries(liveEntries());
+            if (!result.success) {
+                temporaryExpirations.remove(parsed.normalized);
+                notes.remove(parsed.normalized);
+                setUnavailable("Failed to update whitelist after temporary add: " + result.errorMessage);
+                return false;
+            }
+            commitResult(result);
             return true;
         }
     }
@@ -95,11 +139,15 @@ public class IpStore {
             return false;
         }
         synchronized (writeLock) {
-            if (!entries.remove(parsed.normalized)) return false; // not present
+            boolean removedPersistent = entries.remove(parsed.normalized);
+            boolean removedTemporary = temporaryExpirations.remove(parsed.normalized) != null;
+            if (!removedPersistent && !removedTemporary) return false; // not present
+            notes.remove(parsed.normalized);
 
-            ParseResult result = parseEntries(entries);
+            ParseResult result = parseEntries(liveEntries());
             if (!result.success) {
-                entries.add(parsed.normalized); // roll back
+                if (removedPersistent) entries.add(parsed.normalized); // roll back
+                if (removedTemporary) temporaryExpirations.put(parsed.normalized, System.currentTimeMillis() + 1000);
                 setUnavailable("Failed to update whitelist after remove: " + result.errorMessage);
                 return false;
             }
@@ -111,19 +159,71 @@ public class IpStore {
 
     public List<String> list() {
         synchronized (writeLock) {
-            List<String> copy = new ArrayList<>(entries);
+            cleanupExpiredTemporaryEntriesLocked();
+            List<String> copy = new ArrayList<>(liveEntries());
             Collections.sort(copy);
             return copy;
         }
     }
 
+    public List<EntryView> listEntries() {
+        synchronized (writeLock) {
+            cleanupExpiredTemporaryEntriesLocked();
+            List<String> sorted = new ArrayList<>(liveEntries());
+            Collections.sort(sorted);
+            List<EntryView> result = new ArrayList<>(sorted.size());
+            for (String entry : sorted) {
+                result.add(new EntryView(entry, notes.get(entry), temporaryExpirations.get(entry)));
+            }
+            return result;
+        }
+    }
+
     public boolean isValidEntry(String entry) { return parseEntry(entry) != null; }
+
+    public String normalizeEntry(String entry) {
+        ParsedEntry parsed = parseEntry(entry);
+        return parsed == null ? null : parsed.normalized;
+    }
 
     public boolean contains(String entry) {
         ParsedEntry parsed = parseEntry(entry);
         if (parsed == null) return false;
         synchronized (writeLock) {
-            return entries.contains(parsed.normalized);
+            cleanupExpiredTemporaryEntriesLocked();
+            return entries.contains(parsed.normalized) || temporaryExpirations.containsKey(parsed.normalized);
+        }
+    }
+
+    public CheckResult check(String ip) {
+        OptionalInt parsedIp = Ipv4.parse(ip);
+        if (parsedIp.isEmpty()) return CheckResult.invalid(ip);
+        int ipInt = parsedIp.getAsInt();
+        synchronized (writeLock) {
+            cleanupExpiredTemporaryEntriesLocked();
+            for (String entry : liveEntries()) {
+                ParsedEntry parsedEntry = parseEntry(entry);
+                if (parsedEntry != null && parsedEntry.matches(ipInt)) {
+                    return CheckResult.allowed(Ipv4.toString(ipInt), entry, notes.get(entry), temporaryExpirations.get(entry));
+                }
+            }
+        }
+        return CheckResult.denied(Ipv4.toString(ipInt));
+    }
+
+    public void setNote(String entry, String note) {
+        ParsedEntry parsed = parseEntry(entry);
+        if (parsed == null) return;
+        synchronized (writeLock) {
+            if (!entries.contains(parsed.normalized) && !temporaryExpirations.containsKey(parsed.normalized)) return;
+            if (note == null || note.isBlank()) {
+                notes.remove(parsed.normalized);
+            } else {
+                notes.put(parsed.normalized, sanitizeNote(note));
+            }
+            if (entries.contains(parsed.normalized)) {
+                save();
+            }
         }
     }
 
@@ -157,12 +257,64 @@ public class IpStore {
     private void save() {
         if (!ensureDataFolder()) return;
         YamlConfiguration config = new YamlConfiguration();
-        config.set("ips", list());
+        List<String> persistent = new ArrayList<>(entries);
+        Collections.sort(persistent);
+        config.set("ips", persistent);
+        for (String entry : persistent) {
+            String note = notes.get(entry);
+            if (note != null && !note.isBlank()) {
+                config.set("notes." + entry, note);
+            }
+        }
         try {
             config.save(file);
         } catch (IOException e) {
             plugin.getLogger().severe("Failed to save ips.yml: " + e.getMessage());
         }
+    }
+
+    private void loadNotes(YamlConfiguration config) {
+        notes.clear();
+        if (!config.isConfigurationSection("notes")) return;
+        for (String entry : entries) {
+            String note = config.getString("notes." + entry);
+            if (note != null && !note.isBlank()) {
+                notes.put(entry, sanitizeNote(note));
+            }
+        }
+    }
+
+    private Set<String> liveEntries() {
+        Set<String> all = new HashSet<>(entries);
+        all.addAll(temporaryExpirations.keySet());
+        return all;
+    }
+
+    private void cleanupExpiredTemporaryEntries() {
+        if (temporaryExpirations.isEmpty()) return;
+        synchronized (writeLock) {
+            cleanupExpiredTemporaryEntriesLocked();
+        }
+    }
+
+    private void cleanupExpiredTemporaryEntriesLocked() {
+        if (temporaryExpirations.isEmpty()) return;
+        long now = System.currentTimeMillis();
+        boolean changed = temporaryExpirations.entrySet().removeIf(e -> e.getValue() <= now);
+        if (!changed) return;
+
+        notes.keySet().removeIf(noteEntry -> !entries.contains(noteEntry) && !temporaryExpirations.containsKey(noteEntry));
+        ParseResult result = parseEntries(liveEntries());
+        if (result.success) {
+            commitResult(result);
+        } else {
+            setUnavailable("Failed to rebuild whitelist after temporary expiry: " + result.errorMessage);
+        }
+    }
+
+    private static String sanitizeNote(String note) {
+        String trimmed = note.trim();
+        return trimmed.length() <= 120 ? trimmed : trimmed.substring(0, 120);
     }
 
     private ParseResult parseEntries(Iterable<String> loaded) {
@@ -302,6 +454,33 @@ public class IpStore {
         static ParsedEntry exact(String n, int ip)              { return new ParsedEntry(n, EntryType.EXACT, ip, 0, 0, 0); }
         static ParsedEntry cidr(String n, int ip, int prefix)   { return new ParsedEntry(n, EntryType.CIDR, ip, prefix, 0, 0); }
         static ParsedEntry range(String n, int start, int end)  { return new ParsedEntry(n, EntryType.RANGE, 0, 0, start, end); }
+
+        boolean matches(int ip) {
+            return switch (type) {
+                case EXACT -> singleIp == ip;
+                case CIDR -> Integer.compareUnsigned(ip, Ipv4.cidrStart(singleIp, prefix)) >= 0
+                        && Integer.compareUnsigned(ip, Ipv4.cidrEnd(singleIp, prefix)) <= 0;
+                case RANGE -> Integer.compareUnsigned(ip, rangeStart) >= 0
+                        && Integer.compareUnsigned(ip, rangeEnd) <= 0;
+            };
+        }
+    }
+
+    public record EntryView(String value, String note, Long expiresAtMillis) {}
+
+    public record CheckResult(boolean valid, boolean allowed, String ip, String matchedEntry,
+                              String note, Long expiresAtMillis) {
+        static CheckResult invalid(String ip) {
+            return new CheckResult(false, false, ip, null, null, null);
+        }
+
+        static CheckResult allowed(String ip, String matchedEntry, String note, Long expiresAtMillis) {
+            return new CheckResult(true, true, ip, matchedEntry, note, expiresAtMillis);
+        }
+
+        static CheckResult denied(String ip) {
+            return new CheckResult(true, false, ip, null, null, null);
+        }
     }
 
     private static final class ParseResult {

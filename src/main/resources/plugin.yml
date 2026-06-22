@@ -9,7 +9,7 @@ website: ""
 commands:
   ipf:
     description: Manage Better-IP-Filter whitelist and settings
-    usage: /ipf <add|remove|list|status|reload|on|off>
+    usage: /ipf <add|addtemp|remove|check|list|status|reload|on|off>
     permission: betteripfilter.admin
 
 permissions:
@@ -24,7 +24,7 @@ permissions:
       betteripfilter.reload: true
       betteripfilter.toggle: true
   betteripfilter.add:
-    description: Add IPs to the whitelist
+    description: Add permanent or temporary IPs to the whitelist
     default: op
   betteripfilter.remove:
     description: Remove IPs from the whitelist
@@ -33,7 +33,7 @@ permissions:
     description: List whitelisted IPs
     default: op
   betteripfilter.status:
-    description: View plugin status
+    description: View plugin status and check IP matches
     default: op
   betteripfilter.reload:
     description: Reload configuration

@@ -22,6 +22,8 @@ It performs early IP validation during the login process and blocks connections 
 - Proxy trusted-forwarded IP gate (no header parsing)  
 - Optional rate limiting and failsafe behavior  
 - Optional webhook notifications  
+- IP match diagnostics with `/ipf check`
+- Optional whitelist notes and temporary in-memory entries
 - Fully compatible with LuckPerms (Bukkit permissions)
 
 ---
@@ -120,7 +122,7 @@ webhook:
 Security defaults:
 
 * `failsafe.mode: "DENY_ALL"` rejects joins when whitelist storage or IP parsing is unavailable.
-* `webhook.allow-local-addresses: false` blocks literal localhost/private webhook targets by default.
+* `webhook.allow-local-addresses: false` blocks literal localhost/private webhook targets and local/private DNS results by default.
 * Denied logs and webhook payloads contain player names and IP addresses; keep them private.
 
 ### Whitelist entry formats
@@ -133,19 +135,29 @@ Whitelist entries accept only IPv4 values in these formats:
 
 Entries are normalized when saved to `ips.yml`.
 
+Permanent entries may have optional notes when added through commands. Notes are stored in `ips.yml` under a separate `notes` section.
+
+Temporary entries added with `/ipf addtemp` are memory-only and expire automatically. They are not written to `ips.yml` and do not survive a server restart.
+
 ---
 
 ## 🧾 Commands
 
 | Command            | Description                     |
 | ------------------ | ------------------------------- |
-| `/ipf add <ip>`    | Add an IP to the whitelist      |
-| `/ipf remove <ip>` | Remove an IP from the whitelist |
-| `/ipf list`        | Show all whitelisted IPs        |
-| `/ipf status`      | Show plugin diagnostics         |
-| `/ipf reload`      | Reload config and whitelist     |
-| `/ipf on`          | Enable IP filtering             |
-| `/ipf off`         | Disable IP filtering            |
+| Command                              | Description                          |
+| ------------------------------------ | ------------------------------------ |
+| `/ipf add <entry> [note]`            | Add an IP, CIDR, or range            |
+| `/ipf addtemp <entry> <duration> [note]` | Add a temporary memory-only entry |
+| `/ipf remove <entry>`                | Remove a whitelist entry             |
+| `/ipf check <ip>`                    | Show whether an IP matches a rule    |
+| `/ipf list`                          | Show all whitelisted entries         |
+| `/ipf status`                        | Show plugin diagnostics and counters |
+| `/ipf reload`                        | Reload config and whitelist          |
+| `/ipf on`                            | Enable IP filtering                  |
+| `/ipf off`                           | Disable IP filtering                 |
+
+Duration examples for `/ipf addtemp`: `30m`, `2h`, `7d`.
 
 ---
 
@@ -179,6 +191,47 @@ Entries are normalized when saved to `ips.yml`.
 * Rate limiting throttles rapid login attempts based on source IP
 * Failsafe mode controls what happens when storage or IP parsing is unavailable
 * Denied log entries include IP addresses (privacy note: treat logs as sensitive)
+* `/ipf status` includes denied counters for not-whitelisted, proxy, rate-limit, and failsafe denies.
+
+### Proxy setup examples
+
+Standalone Paper server:
+
+```yml
+proxy:
+  mode: "DIRECT"
+  trusted-forwarded-ips: []
+```
+
+Backend behind a trusted proxy:
+
+```yml
+proxy:
+  mode: "PROXY_GATE"
+  trusted-forwarded-ips:
+    - "203.0.113.5"
+```
+
+Velocity modern forwarding:
+
+```yml
+proxy:
+  mode: "PROXY_GATE"
+  trusted-forwarded-ips:
+    - "203.0.113.5"
+```
+
+Keep the Velocity forwarding secret configured in both Velocity and Paper. `PROXY_GATE` only checks the backend connection source IP.
+
+Invalid proxy gate configuration:
+
+```yml
+proxy:
+  mode: "PROXY_GATE"
+  trusted-forwarded-ips: []
+```
+
+This denies every connection because no proxy IP is trusted.
 
 ---
 
