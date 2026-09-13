@@ -269,8 +269,8 @@ mvn clean package
 The build creates two JARs; use the one matching your server version:
 
 ```
-target/Better-IP-Filter-1.4.5.jar       # Minecraft 1.21 - 1.21.11
-target/Better-IP-Filter-1.4.5-mc26.jar  # Minecraft 26.1 - 26.2
+target/Better-IP-Filter-1.4.5-1.21.X.jar  # Minecraft 1.21 - 1.21.11
+target/Better-IP-Filter-1.4.5-26.X.jar    # Minecraft 26.1 - 26.2
 ```
 
 ---

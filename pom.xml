@@ -43,6 +43,8 @@
   </dependencies>
 
   <build>
+    <finalName>${project.artifactId}-${project.version}-1.21.X</finalName>
+
     <!-- Replace ${project.version} in plugin.yml at build time -->
     <resources>
       <resource>
@@ -98,7 +100,7 @@
                 <replace file="${project.build.directory}/mc26-resources/plugin.yml"
                          token="api-version: &quot;1.21&quot;"
                          value="api-version: &quot;26.1&quot;" />
-                <zip destfile="${project.build.directory}/${project.build.finalName}-mc26.jar">
+                <zip destfile="${project.build.directory}/${project.artifactId}-${project.version}-26.X.jar">
                   <zipfileset src="${project.build.directory}/${project.build.finalName}.jar"
                               excludes="plugin.yml" />
                   <fileset dir="${project.build.directory}/mc26-resources" />
@@ -144,7 +146,7 @@
           <projectId>${env.MODRINTH_PROJECT_ID}</projectId>
           <versionNumber>${project.version}</versionNumber>
           <versionType>release</versionType>
-          <uploadFile>${project.build.directory}/${project.artifactId}-${project.version}.jar</uploadFile>
+          <uploadFile>${project.build.directory}/${project.build.finalName}.jar</uploadFile>
           <gameVersions>
             <gameVersion>1.21</gameVersion>
             <gameVersion>1.21.1</gameVersion>
