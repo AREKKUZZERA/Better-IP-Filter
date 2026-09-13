@@ -266,10 +266,11 @@ plugins/Better-IP-Filter/
 mvn clean package
 ```
 
-The compiled JAR will be available in:
+The build creates two JARs; use the one matching your server version:
 
 ```
-target/Better-IP-Filter-1.4.3.jar
+target/Better-IP-Filter-1.4.5.jar       # Minecraft 1.21 - 1.21.11
+target/Better-IP-Filter-1.4.5-mc26.jar  # Minecraft 26.1 - 26.2
 ```
 
 ---

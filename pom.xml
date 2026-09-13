@@ -80,6 +80,38 @@
         </configuration>
       </plugin>
 
+      <!-- Build a dedicated descriptor for Minecraft 26.x without restricting
+           the main JAR, which remains compatible with the 1.21.x line. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-antrun-plugin</artifactId>
+        <version>3.1.0</version>
+        <executions>
+          <execution>
+            <id>package-mc26-jar</id>
+            <phase>package</phase>
+            <configuration>
+              <target>
+                <mkdir dir="${project.build.directory}/mc26-resources" />
+                <copy file="${project.build.outputDirectory}/plugin.yml"
+                      tofile="${project.build.directory}/mc26-resources/plugin.yml" />
+                <replace file="${project.build.directory}/mc26-resources/plugin.yml"
+                         token="api-version: &quot;1.21&quot;"
+                         value="api-version: &quot;26.1&quot;" />
+                <zip destfile="${project.build.directory}/${project.build.finalName}-mc26.jar">
+                  <zipfileset src="${project.build.directory}/${project.build.finalName}.jar"
+                              excludes="plugin.yml" />
+                  <fileset dir="${project.build.directory}/mc26-resources" />
+                </zip>
+              </target>
+            </configuration>
+            <goals>
+              <goal>run</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
