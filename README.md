@@ -1,7 +1,7 @@
 ![BetterIPFILTER](src/main/resources/betteripfilter-logo.png)
 
 ![Java Version](https://img.shields.io/badge/Java-21+-blue)
-![PaperMC](https://img.shields.io/badge/Paper-1.21--26.1.2-white)
+![PaperMC](https://img.shields.io/badge/Paper-1.21--26.2-white)
 ![Release](https://img.shields.io/github/v/release/AREKKUZZERA/better-IP-Filter?style=flat-square&logo=github)
 [![Modrinth](https://img.shields.io/badge/Modrinth-Available-1bd96a?logo=modrinth&logoColor=white)](https://modrinth.com/plugin/better-ip-filter)
 
@@ -31,7 +31,7 @@ It performs early IP validation during the login process and blocks connections 
 ## 📦 Requirements
 
 - **Java:** 21 or newer  
-- **Server:** Paper 1.21 - 1.21.11, 26.1 - 26.1.2
+- **Server:** Paper 1.21 - 1.21.11, 26.1 - 26.2
 - **Build tool:** Maven (only if building from source)
 
 ---
@@ -278,7 +278,7 @@ target/Better-IP-Filter-1.4.3.jar
 
 * ✔ Paper/Spigot/etc
 * ✔ Minecraft 1.21 - 1.21.11
-* ✔ Minecraft 26.1 - 26.1.2
+* ✔ Minecraft 26.1 - 26.2
 
 ---
 

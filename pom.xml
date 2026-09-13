@@ -5,7 +5,7 @@
 
   <groupId>betteripfilter</groupId>
   <artifactId>Better-IP-Filter</artifactId>
-  <version>1.4.4</version>
+  <version>1.4.5</version>
   <packaging>jar</packaging>
 
   <name>Better-IP-Filter</name>
@@ -129,6 +129,7 @@
             <gameVersion>26.1</gameVersion>
             <gameVersion>26.1.1</gameVersion>
             <gameVersion>26.1.2</gameVersion>
+            <gameVersion>26.2</gameVersion>
           </gameVersions>
           <loaders>
             <loader>paper</loader>
